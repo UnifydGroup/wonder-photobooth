@@ -69,7 +69,8 @@
   #status { position:fixed; top:max(12px,env(safe-area-inset-top)); right:16px; font-size:13px; color:var(--muted); background:var(--panel); border:1px solid var(--line); padding:6px 12px; border-radius:999px; display:none; }
   #status.on { display:block; }
   #staffHot { position:fixed; top:0; left:0; width:90px; height:90px; z-index:5; }
-  #staff { background:var(--ink); z-index:10; gap:14px; }
+  #staff, #staffLock { background:var(--ink); z-index:10; gap:14px; }
+  #lockErr { min-height:20px; color:var(--accent); }
   #staff .btn { min-width:320px; }
   #camErr { color:var(--accent); text-align:center; max-width:560px; }
 </style>
@@ -84,6 +85,17 @@
   <input id="pass" type="password" placeholder="Staff passcode" autocomplete="off">
   <div id="setupErr"></div>
   <button class="btn primary" id="setupGo">Connect</button>
+  <button class="btn ghost" id="setupDash" style="margin-top:12px">Open staff dashboard</button>
+</section>
+
+<!-- Staff menu passcode (when switched on in Settings) -->
+<section class="screen" id="staffLock">
+  <h1>Staff menu</h1>
+  <p class="sub">Enter the superadmin passcode.</p>
+  <input id="lockPass" type="password" placeholder="Superadmin passcode" autocomplete="off">
+  <div id="lockErr"></div>
+  <button class="btn primary" id="lockGo">Unlock</button>
+  <button class="btn ghost" id="lockCancel">Cancel</button>
 </section>
 
 <!-- 2. Tap to start (needed for camera + wake lock on iPad) -->
@@ -499,11 +511,35 @@
     taps = taps.filter((t) => now - t < 2000).concat(now);
     if (taps.length >= 5) {
       taps = [];
+      if (settings.staff_menu_lock && staffKey) {
+        lockReturn = document.querySelector(".screen.on")?.id || "booth";
+        $("lockPass").value = ""; $("lockErr").textContent = "";
+        show("staffLock"); setTimeout(() => $("lockPass").focus(), 50);
+        return;
+      }
+      openStaffMenu();
+    }
+  });
+  let lockReturn = "booth", lockFails = 0;
+  // Checked on the iPad against the passcode it was connected with, so it works offline too.
+  $("lockGo").onclick = () => {
+    if (lockFails >= 5) { $("lockErr").textContent = "Too many attempts — wait a minute"; return; }
+    if ($("lockPass").value.trim() === staffKey) { lockFails = 0; openStaffMenu(); }
+    else {
+      lockFails++; $("lockErr").textContent = "Incorrect passcode";
+      if (lockFails >= 5) setTimeout(() => { lockFails = 0; }, 60000);
+    }
+  };
+  $("lockPass").addEventListener("keydown", (e) => { if (e.key === "Enter") $("lockGo").click(); });
+  $("lockCancel").onclick = () => show(lockReturn === "staffLock" ? "booth" : lockReturn);
+  async function openStaffMenu() {
+    {
       const n = await updateStatus();
       $("staffInfo").textContent = `${boothName} · ${settings.event_name} · ${n} photo${n === 1 ? "" : "s"} in upload queue · ${navigator.onLine ? "online" : "offline"}`;
       show("staff");
     }
-  });
+  }
+  $("setupDash").onclick = () => location.assign("/admin?booth=1");
   $("sDash").onclick = () => location.assign("/admin?booth=1");
   $("sRetry").onclick = () => pumpQueue();
   $("sReload").onclick = async () => { await loadSettings(); show("booth"); };

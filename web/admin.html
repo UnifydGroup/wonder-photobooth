@@ -278,6 +278,10 @@
             <div class="field"><label for="b_wifi">Guest Wi-Fi name <span class="opt">blank hides it</span></label><input type="text" id="b_wifi" data-bind="wifi_name" maxlength="60"></div>
             <div class="field"><label for="b_wifipw">Wi-Fi password <span class="opt">blank = open</span></label><input type="text" id="b_wifipw" data-bind="wifi_password" maxlength="60"></div>
           </div>
+          <div class="field" style="display:flex;align-items:center;gap:12px;margin-top:6px">
+            <label class="switch"><input type="checkbox" id="b_staff_lock" data-bind="staff_menu_lock"><span></span></label>
+            <label for="b_staff_lock" style="margin:0">Ask for the superadmin passcode before opening the booth's staff menu (5 taps, top-left)</label>
+          </div>
         </div>
 
         <div class="panel">
@@ -583,7 +587,8 @@
   function fillForm() {
     document.querySelectorAll("[data-bind]").forEach((el) => {
       const v = getPath(cfg, el.dataset.bind);
-      el.value = v == null ? "" : v;
+      if (el.type === "checkbox") el.checked = v === true;
+      else el.value = v == null ? "" : v;
     });
     document.querySelectorAll(".uploader").forEach(renderUploader);
     F.preload(cfg).then(() => { renderFrames(); renderTheme(); document.querySelectorAll(".uploader").forEach(renderUploader); });
@@ -680,8 +685,8 @@
 
   // Generic field binding
   document.querySelectorAll("[data-bind]").forEach((el) => {
-    el.addEventListener("input", () => {
-      const v = el.dataset.num ? parseInt(el.value, 10) || 0 : el.value;
+    el.addEventListener(el.type === "checkbox" ? "change" : "input", () => {
+      const v = el.type === "checkbox" ? el.checked : el.dataset.num ? parseInt(el.value, 10) || 0 : el.value;
       setPath(cfg, el.dataset.bind, v);
       markDirty();
       if (el.dataset.bind.startsWith("colors.")) renderTheme();

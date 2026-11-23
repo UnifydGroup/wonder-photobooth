@@ -87,6 +87,7 @@ const DEFAULT_BRANDING = {
   guest_intro: "Pop in your details to unlock your photo, then share it straight to Instagram or Facebook.",
   optin_text: "Yes, send me news and offers. You can unsubscribe at any time.",
   terms_url: "",
+  staff_menu_lock: false,
 };
 const tpl = (id: string, name: string, bg: string, fg: string, accent: string) =>
   ({ id, name, kind: "template", template: id, enabled: true, bg, fg, accent, title: "{event_name}", subtitle: "{event_hashtag}", event_logo: true, app_logo: false, overlay: "" });
@@ -121,6 +122,7 @@ function normBranding(b: any) {
     guest_intro: textOr(b.guest_intro, 300, d.guest_intro),
     optin_text: textOr(b.optin_text, 200, d.optin_text),
     terms_url: b.terms_url ? httpsUrl(b.terms_url) : "",
+    staff_menu_lock: b.staff_menu_lock === true,
   };
 }
 function normFrames(list: any) {
