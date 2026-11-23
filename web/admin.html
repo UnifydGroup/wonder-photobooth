@@ -78,7 +78,7 @@
   .up-prev { width:160px; height:80px; border-radius:10px; border:1px dashed var(--line); display:flex; align-items:center; justify-content:center; background:repeating-conic-gradient(#2a2a33 0 25%, #1f1f27 0 50%) 0 0/16px 16px; font-size:13px; }
   .up-prev img { max-width:150px; max-height:70px; object-fit:contain; }
   .themeprev { display:flex; justify-content:space-between; align-items:center; padding:16px 18px; border-radius:12px; border:1px solid var(--line); }
-  .tp-title { font-weight:800; } .tp-btn { color:#fff; padding:8px 16px; border-radius:999px; font-weight:700; font-size:14px; }
+  .tp-title { font-weight:800; } .tp-btn { padding:8px 16px; border-radius:999px; font-weight:700; font-size:14px; }
   .framelist { display:grid; grid-template-columns:repeat(auto-fill,minmax(440px,1fr)); gap:14px; }
   @media (max-width:560px) { .framelist { grid-template-columns:1fr; } }
   .fcard { display:flex; gap:16px; padding:14px; border:1px solid var(--line); border-radius:14px; background:var(--ink); align-items:flex-start; }
@@ -508,6 +508,8 @@
     const c = cfg.colors, el = $("themePrev");
     el.style.background = c.background; el.style.color = c.text;
     el.querySelector(".tp-btn").style.background = c.accent;
+    const n = parseInt(c.accent.slice(1), 16), l = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+    el.querySelector(".tp-btn").style.color = l > 0.6 ? "#1A1A1A" : "#FFFFFF";
   }
 
   // ---------- uploads ----------

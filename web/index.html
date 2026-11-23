@@ -22,7 +22,7 @@
   .sub { color:var(--muted); font-size:clamp(16px,2.2vw,22px); margin:0 0 28px; text-align:center; }
   .btn { padding:22px 44px; border-radius:999px; font-size:clamp(20px,2.6vw,28px); font-weight:700; transition:transform .1s; }
   .btn:active { transform:scale(.96); }
-  .btn.primary { background:var(--accent); color:#fff; box-shadow:0 10px 30px rgba(255,90,54,.35); }
+  .btn.primary { background:var(--accent); color:var(--on-accent,#fff); box-shadow:0 10px 30px rgba(0,0,0,.18); }
   .btn.secondary { background:var(--text); color:var(--ink); }
   .btn.ghost { background:transparent; color:var(--muted); border:2px solid var(--line); }
   .btn:disabled { opacity:.4; }
@@ -69,7 +69,7 @@
   #status { position:fixed; top:max(12px,env(safe-area-inset-top)); right:16px; font-size:13px; color:var(--muted); background:var(--panel); border:1px solid var(--line); padding:6px 12px; border-radius:999px; display:none; }
   #status.on { display:block; }
   #staffHot { position:fixed; top:0; left:0; width:90px; height:90px; z-index:5; }
-  #staff { background:rgba(14,14,18,.96); z-index:10; gap:14px; }
+  #staff { background:var(--ink); z-index:10; gap:14px; }
   #staff .btn { min-width:320px; }
   #camErr { color:var(--accent); text-align:center; max-width:560px; }
 </style>
@@ -214,13 +214,15 @@
     else { const t = document.createElement("div"); t.className = "brand"; t.textContent = settings.event_name; el.append(t); }
   }
   function rgba(hex, a) { const n = parseInt(hex.slice(1), 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`; }
+  // Dark or light text on the accent colour, whichever reads better
+  function onColor(hex) { const n = parseInt(hex.slice(1), 16), l = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255; return l > 0.6 ? "#1A1A1A" : "#FFFFFF"; }
 
   // Apply colours, logos and wording from the dashboard
   let brandingVersion = 0;
   async function applyBranding() {
     const v = ++brandingVersion;
     const c = settings.colors, root = document.documentElement.style;
-    root.setProperty("--ink", c.background); root.setProperty("--text", c.text); root.setProperty("--accent", c.accent);
+    root.setProperty("--ink", c.background); root.setProperty("--text", c.text); root.setProperty("--accent", c.accent); root.setProperty("--on-accent", onColor(c.accent));
     root.setProperty("--muted", rgba(c.text, 0.62)); root.setProperty("--panel", rgba(c.text, 0.07)); root.setProperty("--line", rgba(c.text, 0.16));
     document.querySelector('meta[name="theme-color"]').content = c.background;
     $("startHead").textContent = settings.start_headline;
@@ -232,7 +234,7 @@
     render();
     function render() {
       brandInto($("startBrand")); brandInto($("boothBrand"));
-      const app = F.asset(settings.app_logo);
+      const app = settings.app_logo !== settings.event_logo ? F.asset(settings.app_logo) : null; // no duplicate logo
       $("appLogo").classList.toggle("on", !!app);
       if (app) $("appLogo").src = app.src;
       if (!frames().some((f) => f.id === frame)) frame = (frames()[0] || {}).id;

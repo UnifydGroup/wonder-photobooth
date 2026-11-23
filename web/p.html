@@ -22,7 +22,7 @@
   .check input { width:22px; height:22px; margin:0; flex:none; accent-color:var(--accent); }
   .check a { color:var(--text); }
   .btn { display:flex; align-items:center; justify-content:center; gap:10px; width:100%; padding:17px; border-radius:999px; font-size:18px; font-weight:700; border:0; cursor:pointer; text-decoration:none; margin-top:10px; }
-  .primary { background:var(--accent); color:#fff; }
+  .primary { background:var(--accent); color:var(--on-accent,#fff); }
   .secondary { background:var(--text); color:var(--ink); }
   .ghost { background:transparent; color:var(--text); border:1.5px solid var(--line); }
   .btn:disabled { opacity:.5; }
@@ -102,18 +102,19 @@
   fetch(`${API}/photo/${id}`).then((r) => r.json()).then((d) => { if (d.error) show("bad"); }).catch(() => {});
 
   // Branding from the dashboard: colours, logos and wording
+  function onColor(hex) { const n = parseInt(hex.slice(1), 16), l = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255; return l > 0.6 ? "#1A1A1A" : "#FFFFFF"; }
   const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`; };
   fetch(`${API}/config`).then((r) => r.json()).then((c) => {
     const col = c.colors || {}, root = document.documentElement.style;
     if (col.background) {
-      root.setProperty("--ink", col.background); root.setProperty("--text", col.text); root.setProperty("--accent", col.accent);
+      root.setProperty("--ink", col.background); root.setProperty("--text", col.text); root.setProperty("--accent", col.accent); root.setProperty("--on-accent", onColor(col.accent));
       root.setProperty("--muted", rgba(col.text, 0.62)); root.setProperty("--panel", rgba(col.text, 0.07)); root.setProperty("--line", rgba(col.text, 0.16));
       document.querySelector('meta[name="theme-color"]').content = col.background;
     }
     const b = $("brand");
     if (c.event_logo) { b.innerHTML = ""; const i = new Image(); i.src = c.event_logo; i.alt = c.event_name || ""; b.append(i); }
     else b.textContent = c.event_name || "";
-    if (c.app_logo) { $("appLogo").src = c.app_logo; $("appLogo").alt = c.app_name || ""; $("appLogo").classList.remove("hidden"); }
+    if (c.app_logo && c.app_logo !== c.event_logo) { $("appLogo").src = c.app_logo; $("appLogo").alt = c.app_name || ""; $("appLogo").classList.remove("hidden"); }
     if (c.guest_headline) $("gHead").textContent = c.guest_headline;
     if (c.guest_intro) $("gIntro").textContent = c.guest_intro;
     if (c.optin_text) $("optinText").textContent = c.optin_text;
