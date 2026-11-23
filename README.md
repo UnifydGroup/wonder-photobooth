@@ -20,6 +20,11 @@ Live: https://wonder-photobooth.vercel.app · Dashboard: `/admin` · Guest page:
 - **Database:** apply `supabase/migrations` in order, then set the staff passcode hash (see `20261119015236_app_secrets.sql`).
 - **Optional email fallback:** set the `RESEND_API_KEY` and `EMAIL_FROM` edge function secrets.
 
+## Access
+- **Superadmin passcode:** full dashboard (overview, booth health, photos, leads, all settings, brand profiles, client access, passcodes). It's also the passcode for booth iPads.
+- **Client passcode:** set by a superadmin under Settings › Client access. Same `/admin` link, but only the statistics dashboard and the brand kit (event, app brand, frames, booth wording, guest page). No guest data, photos, booth controls or passcodes; the server enforces this, and the passcode can't run a booth.
+- **Brand profiles (superadmin):** save the current brand kit as a named profile, then load it later to switch clients.
+
 ## Notes
 - Photos live in a private `photos` bucket and are only reachable via signed links. Logos and frame overlays live in the public `branding` bucket.
 - Photos auto-delete after the retention period set in Settings. Leads are never auto-deleted.

@@ -512,7 +512,10 @@
   async function checkKey(key) {
     try {
       const r = await fetch(C.API + "/auth", { method: "POST", headers: { "x-staff-key": key } });
-      return r.status === 429 ? "locked" : r.ok;
+      if (r.status === 429) return "locked";
+      if (!r.ok) return false;
+      const d = await r.json().catch(() => ({}));
+      return d.role && d.role !== "superadmin" ? "client" : true; // client passcodes can't run a booth
     } catch (_) { return null; }
   }
   $("setupGo").onclick = async () => {
@@ -521,6 +524,7 @@
     $("setupErr").textContent = "Checking…";
     const ok = await checkKey(key);
     if (ok === "locked") { $("setupErr").textContent = "Too many attempts — wait 15 minutes"; return; }
+    if (ok === "client") { $("setupErr").textContent = "That's a client dashboard passcode. Booths need the superadmin passcode."; return; }
     if (ok) {
       staffKey = key;
       boothName = $("boothName").value.trim() || boothName;

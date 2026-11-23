@@ -105,6 +105,24 @@
   .savebar { position:fixed; left:0; right:0; bottom:0; display:flex; justify-content:space-between; align-items:center; gap:12px; padding:14px 24px; background:rgba(14,14,18,.96); border-top:1px solid var(--line); z-index:3; color:var(--muted); flex-wrap:wrap; }
   .savebar.dirty { color:var(--text); border-top-color:var(--accent); }
   .savebar.dirty #saveState::before { content:"● "; color:var(--accent); }
+  .role-client [data-role="super"] { display:none !important; }
+  .rolebadge { font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; padding:3px 8px; border-radius:999px; background:var(--line); color:var(--muted); margin-left:8px; vertical-align:middle; }
+  .chart { display:flex; align-items:flex-end; gap:4px; height:160px; padding-top:8px; }
+  .chart .col { flex:1; display:flex; flex-direction:column; justify-content:flex-end; height:100%; min-width:0; }
+  .chart .bp { background:var(--accent); border-radius:3px 3px 0 0; min-height:2px; }
+  .chart .bl { background:var(--ok); border-radius:3px 3px 0 0; }
+  .chart .lbl { font-size:10px; color:var(--muted); text-align:center; margin-top:4px; height:12px; white-space:nowrap; }
+  .legend { display:flex; gap:16px; font-size:12px; color:var(--muted); margin-top:8px; }
+  .legend i { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:-1px; }
+  .proflist { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:12px; margin-bottom:6px; }
+  .pcard { border:1px solid var(--line); border-radius:12px; overflow:hidden; background:var(--ink); display:flex; flex-direction:column; }
+  .pcard .pv { height:84px; display:flex; align-items:center; justify-content:center; gap:10px; padding:10px; }
+  .pcard .pv img { max-height:44px; max-width:70%; object-fit:contain; }
+  .pcard .pv .sw { width:16px; height:16px; border-radius:50%; border:2px solid rgba(255,255,255,.6); flex:none; }
+  .pcard .pb { padding:10px 12px; display:flex; flex-direction:column; gap:8px; }
+  .pcard .pn { font-weight:700; }
+  .pill { font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; }
+  .pill.on { background:rgba(76,195,138,.15); color:var(--ok); } .pill.off { background:var(--line); color:var(--muted); }
 </style>
 </head>
 <body>
@@ -119,12 +137,12 @@
 
 <div id="app" class="hidden">
   <header>
-    <b id="evName">Photo Booth</b>
+    <div><b id="evName">Photo Booth</b><span class="rolebadge" id="roleBadge"></span></div>
     <nav>
-      <button data-tab="overview" class="on">Overview</button>
-      <button data-tab="photos">Photos</button>
-      <button data-tab="leads">Leads</button>
-      <button data-tab="settings">Settings</button>
+      <button data-tab="overview" class="on" id="tabOverview">Overview</button>
+      <button data-tab="photos" data-role="super">Photos</button>
+      <button data-tab="leads" data-role="super">Leads</button>
+      <button data-tab="settings" id="tabSettings">Settings</button>
     </nav>
     <div style="display:flex;gap:8px">
       <button class="btn small" id="refresh">Refresh</button>
@@ -135,9 +153,14 @@
   <main>
     <!-- Overview -->
     <section data-pane="overview">
-      <div id="alerts"></div>
+      <div id="alerts" data-role="super"></div>
       <div class="stats" id="stats"></div>
       <div class="panel" style="margin-bottom:28px">
+        <div class="bar" style="margin-bottom:4px"><h2 style="margin:0">Last 24 hours</h2><span class="muted" style="font-size:13px" id="peak"></span></div>
+        <div class="chart" id="chart" role="img" aria-label="Photos and leads per hour, last 24 hours"></div>
+        <div class="legend"><span><i style="background:var(--accent)"></i>Photos</span><span><i style="background:var(--ok)"></i>Leads</span></div>
+      </div>
+      <div class="panel" style="margin-bottom:28px" data-role="super">
         <div class="bar" style="margin-bottom:8px"><h2 style="margin:0">Booth health</h2><span class="muted" style="font-size:13px" id="lastPhoto"></span></div>
         <div id="booths"></div>
       </div>
@@ -146,7 +169,7 @@
           <h2>Guest funnel</h2>
           <div class="funnel" id="funnel"></div>
         </div>
-        <div class="panel">
+        <div class="panel" data-role="super">
           <h2>Set up the iPad</h2>
           <ol class="muted" style="line-height:1.7;padding-left:18px;margin:0">
             <li>On the iPad, open <b id="boothUrl"></b> in Safari.</li>
@@ -185,6 +208,15 @@
     <!-- Settings -->
     <section data-pane="settings" class="hidden">
       <div class="setgrid">
+
+        <div class="panel wide" data-role="super">
+          <div class="bar" style="margin-bottom:6px">
+            <h2 style="margin:0">Brand profiles</h2>
+            <button class="btn primary small" id="saveProfile">+ Save current as profile</button>
+          </div>
+          <p class="hint">A profile stores a client's brand kit: event and app names, hashtags, logos, colours, wording and frames. Load one to prefill the settings below, check it, then Save changes. Saving or updating a profile includes any unsaved edits.</p>
+          <div id="profileList" class="proflist"></div>
+        </div>
 
         <div class="panel">
           <h2>Event</h2>
@@ -229,10 +261,14 @@
         </div>
 
         <div class="panel">
-          <h2>Booth screens</h2>
+          <h2>Booth wording</h2>
           <div class="field"><label for="b_start_headline">Start screen headline</label><input type="text" id="b_start_headline" data-bind="start_headline" maxlength="80"></div>
           <div class="field"><label for="b_start_sub">Start screen subtext</label><input type="text" id="b_start_sub" data-bind="start_sub" maxlength="120"></div>
           <div class="field"><label for="b_qr_headline">QR screen headline</label><input type="text" id="b_qr_headline" data-bind="qr_headline" maxlength="80"></div>
+        </div>
+
+        <div class="panel" data-role="super">
+          <h2>Booth operation</h2>
           <div class="field"><label for="b_countdown">Countdown (seconds)</label>
             <select id="b_countdown" data-bind="countdown" data-num="1"><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option></select></div>
           <div class="two">
@@ -249,15 +285,23 @@
           <div class="field"><label for="b_terms">Terms &amp; privacy policy link <span class="opt">https://…</span></label><input type="url" id="b_terms" data-bind="terms_url" maxlength="300" placeholder="https://example.com/privacy"></div>
         </div>
 
-        <div class="panel">
+        <div class="panel" data-role="super">
           <h2>Data</h2>
           <div class="field"><label for="b_days">Delete photos automatically after (days)</label><input type="number" id="b_days" data-bind="photo_retention_days" data-num="1" min="1" max="365" style="max-width:140px"></div>
           <p class="hint" style="margin:0">Leads are kept until you delete them. Export them from the Leads tab after each event.</p>
         </div>
 
-        <div class="panel">
-          <h2>Staff passcode</h2>
-          <p class="hint">Used for the booth iPad and this dashboard. Booths need the new passcode, so don't change it during an event.</p>
+        <div class="panel" data-role="super">
+          <h2>Client access</h2>
+          <p class="hint">Give the client their own passcode for this dashboard. They only see the statistics and the brand kit: no guest details, photos, booth controls or passcodes, and the passcode can't run a booth.</p>
+          <p style="margin:0 0 14px">Status: <span class="pill" id="clientStatus"></span></p>
+          <div class="field"><label for="clientPass">New client passcode (min 8 characters)</label><input type="password" id="clientPass" autocomplete="new-password"></div>
+          <div class="btnrow"><button class="btn" id="saveClientPass">Set client passcode</button><button class="btn" id="disableClient">Turn off client access</button></div>
+        </div>
+
+        <div class="panel" data-role="super">
+          <h2>Superadmin passcode</h2>
+          <p class="hint">Full access to this dashboard, and the passcode for booth iPads. Booths need the new passcode, so don't change it during an event.</p>
           <div class="field"><label for="newPass">New passcode (min 8 characters)</label><input type="password" id="newPass" autocomplete="new-password"></div>
           <button class="btn" id="savePass">Update passcode</button>
         </div>
@@ -285,7 +329,17 @@
   const F = window.Frames;
   const $ = (id) => document.getElementById(id);
   let key = sessionStorage.getItem("staffKey");
+  let role = sessionStorage.getItem("role") || "superadmin";
   let data = null;
+  let profiles = [];
+  const isSuper = () => role === "superadmin";
+  function applyRole() {
+    document.body.classList.toggle("role-client", !isSuper());
+    $("roleBadge").textContent = isSuper() ? "Superadmin" : "Client";
+    $("tabOverview").textContent = isSuper() ? "Overview" : "Dashboard";
+    $("tabSettings").textContent = isSuper() ? "Settings" : "Brand kit";
+    if (!isSuper() && document.querySelector("nav button[data-role=super].on")) $("tabOverview").click();
+  }
 
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const fmt = (t) => new Date(t).toLocaleString("en-AU", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
@@ -308,12 +362,15 @@
       const r = await fetch(API + "/auth", { method: "POST", headers: { "x-staff-key": key } });
       if (r.status === 429) { $("loginErr").textContent = "Too many attempts — wait 15 minutes"; return; }
       if (!r.ok) throw 0;
+      const d = await r.json();
+      role = d.role || "superadmin";
       sessionStorage.setItem("staffKey", key);
+      sessionStorage.setItem("role", role);
       start();
     } catch (_) { $("loginErr").textContent = "Incorrect passcode"; }
   };
   $("pass").addEventListener("keydown", (e) => e.key === "Enter" && $("loginGo").click());
-  function logout() { sessionStorage.removeItem("staffKey"); key = null; $("app").classList.add("hidden"); $("login").classList.remove("hidden"); }
+  function logout() { sessionStorage.removeItem("staffKey"); sessionStorage.removeItem("role"); key = null; $("app").classList.add("hidden"); $("login").classList.remove("hidden"); }
   $("logout").onclick = logout;
 
   // ---------- Tabs ----------
@@ -325,9 +382,15 @@
   // ---------- Load ----------
   async function load() {
     data = await api("/admin/summary");
-    renderOverview(); renderPhotos(); renderLeads(); renderSettings();
+    if (data.role && data.role !== role) { role = data.role; sessionStorage.setItem("role", role); }
+    applyRole();
+    renderOverview();
+    if (isSuper()) { renderPhotos(); renderLeads(); }
+    renderSettings();
+    if (isSuper()) loadProfiles();
   }
   async function start() {
+    applyRole();
     $("login").classList.add("hidden");
     $("app").classList.remove("hidden");
     $("boothUrl").textContent = location.origin;
@@ -369,8 +432,23 @@
     });
   }
 
+  // Photos and leads per hour, last 24 hours
+  function renderChart() {
+    const h = data.hourly || [];
+    const max = Math.max(1, ...h.map((x) => Math.max(x.photos, x.leads)));
+    const hr = (t) => new Date(t).toLocaleTimeString("en-AU", { hour: "numeric" });
+    $("chart").innerHTML = h.map((x, i) => `
+      <div class="col" title="${hr(x.hour)}: ${x.photos} photos, ${x.leads} leads">
+        <div style="display:flex;gap:2px;align-items:flex-end;height:100%"><div class="bp" style="flex:1;height:${(x.photos / max) * 100}%"></div><div class="bl" style="flex:1;height:${(x.leads / max) * 100}%"></div></div>
+        <div class="lbl">${i % 4 === 0 ? hr(x.hour) : ""}</div>
+      </div>`).join("");
+    const peak = h.reduce((a, b) => (!a || b.photos > a.photos ? b : a), null);
+    $("peak").textContent = peak && peak.photos ? `Busiest hour: ${hr(peak.hour)} (${peak.photos} photos)` : "No photos in the last 24 hours";
+  }
+
   function renderOverview() {
-    renderHealth();
+    if (isSuper()) renderHealth();
+    renderChart();
     const s = data.stats;
     $("evName").textContent = data.settings.event_name + " · Photo Booth";
     $("stats").innerHTML = [
@@ -484,14 +562,107 @@
   function renderSettings(force) {
     if (dirty && !force) return; // never overwrite edits in progress
     cfg = clone(data.settings);
+    fillForm();
+    markDirty(false);
+    if (isSuper()) setClientStatus(!!data.client_access);
+  }
+  function fillForm() {
     document.querySelectorAll("[data-bind]").forEach((el) => {
       const v = getPath(cfg, el.dataset.bind);
       el.value = v == null ? "" : v;
     });
     document.querySelectorAll(".uploader").forEach(renderUploader);
     F.preload(cfg).then(() => { renderFrames(); renderTheme(); document.querySelectorAll(".uploader").forEach(renderUploader); });
-    renderFrames(); renderTheme(); markDirty(false);
+    renderFrames(); renderTheme();
   }
+
+  // ---------- brand profiles (superadmin) ----------
+  const PROFILE_KEYS = ["event_name", "event_hashtag", "app_name", "app_hashtag", "app_logo", "event_logo", "colors", "start_headline", "start_sub", "qr_headline", "guest_headline", "guest_intro", "optin_text", "terms_url", "frames"];
+  const profileData = () => Object.fromEntries(PROFILE_KEYS.map((k) => [k, clone(cfg[k] ?? "")]));
+  async function loadProfiles() {
+    try { profiles = await api("/admin/profiles"); renderProfiles(); } catch (_) {}
+  }
+  function renderProfiles() {
+    const box = $("profileList");
+    if (!profiles.length) { box.innerHTML = `<p class="muted" style="margin:0">No profiles yet. Set up a client's brand below, then save it as a profile.</p>`; return; }
+    box.innerHTML = profiles.map((p) => {
+      const d = p.data || {}, c = d.colors || {};
+      const logo = d.event_logo || d.app_logo;
+      return `<div class="pcard">
+        <div class="pv" style="background:${esc(c.background || "#222")}">
+          ${logo ? `<img src="${esc(logo)}" alt="">` : `<b style="color:${esc(c.text || "#fff")}">${esc(d.event_name || p.name)}</b>`}
+          <span class="sw" style="background:${esc(c.accent || "#fff")}" title="Accent colour"></span>
+        </div>
+        <div class="pb">
+          <div><div class="pn">${esc(p.name)}</div><div class="muted small">${(d.frames || []).length} frames · updated ${fmt(p.updated_at)}</div></div>
+          <div class="btnrow">
+            <button class="btn small primary" data-pact="load" data-id="${p.id}">Load</button>
+            <button class="btn small" data-pact="update" data-id="${p.id}">Update</button>
+            <button class="btn small" data-pact="rename" data-id="${p.id}">Rename</button>
+            <button class="btn small" data-pact="delete" data-id="${p.id}">Delete</button>
+          </div>
+        </div></div>`;
+    }).join("");
+    box.querySelectorAll("[data-pact]").forEach((b) => b.onclick = () => profileAction(b.dataset.pact, b.dataset.id));
+  }
+  async function profileAction(act, id) {
+    const p = profiles.find((x) => x.id === id);
+    if (!p) return;
+    try {
+      if (act === "load") {
+        if (dirty && !confirm("Loading replaces your unsaved changes. Continue?")) return;
+        for (const k of PROFILE_KEYS) if (p.data[k] !== undefined) cfg[k] = clone(p.data[k]);
+        openFrame = null; fillForm(); markDirty();
+        toast(`Loaded "${p.name}". Check it, then Save changes to send it to the booths.`);
+      }
+      if (act === "update") {
+        if (!confirm(`Overwrite "${p.name}" with the current settings?`)) return;
+        await api(`/admin/profiles/${id}`, { method: "PUT", body: JSON.stringify({ data: profileData() }) });
+        toast("Profile updated"); loadProfiles();
+      }
+      if (act === "rename") {
+        const name = prompt("Profile name", p.name);
+        if (!name || name === p.name) return;
+        await api(`/admin/profiles/${id}`, { method: "PUT", body: JSON.stringify({ name }) });
+        loadProfiles();
+      }
+      if (act === "delete") {
+        if (!confirm(`Delete the "${p.name}" profile? The live settings aren't affected.`)) return;
+        await api(`/admin/profiles/${id}`, { method: "DELETE" });
+        toast("Profile deleted"); loadProfiles();
+      }
+    } catch (e) { toast(e.message); }
+  }
+  $("saveProfile").onclick = async () => {
+    const name = prompt("Name this brand profile (e.g. the client)", cfg.event_name || "");
+    if (!name) return;
+    try {
+      await api("/admin/profiles", { method: "POST", body: JSON.stringify({ name, data: profileData() }) });
+      toast(`Saved "${name}"`); loadProfiles();
+    } catch (e) { toast(e.message); }
+  };
+
+  // ---------- client access (superadmin) ----------
+  function setClientStatus(on) {
+    data.client_access = on;
+    $("clientStatus").textContent = on ? "On" : "Off";
+    $("clientStatus").className = "pill " + (on ? "on" : "off");
+    $("disableClient").disabled = !on;
+  }
+  $("saveClientPass").onclick = async () => {
+    try {
+      await api("/admin/client-passcode", { method: "PUT", body: JSON.stringify({ passcode: $("clientPass").value }) });
+      $("clientPass").value = ""; setClientStatus(true);
+      toast("Client passcode set. Share it with the client with the /admin link.");
+    } catch (e) { toast(e.message); }
+  };
+  $("disableClient").onclick = async () => {
+    if (!confirm("Turn off client access? Their passcode will stop working.")) return;
+    try {
+      await api("/admin/client-passcode", { method: "PUT", body: JSON.stringify({ disable: true }) });
+      setClientStatus(false); toast("Client access turned off");
+    } catch (e) { toast(e.message); }
+  };
 
   // Generic field binding
   document.querySelectorAll("[data-bind]").forEach((el) => {

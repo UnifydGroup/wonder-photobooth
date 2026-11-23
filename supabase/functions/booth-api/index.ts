@@ -42,17 +42,37 @@ const clientIp = (req: Request) =>
   (req.headers.get("x-forwarded-for") || "").split(",")[0].trim() || "unknown";
 
 // Returns "ok" | "denied" | "locked"
-async function staffCheck(req: Request): Promise<"ok" | "denied" | "locked"> {
+// Superadmin passcode = full access (and runs booths). Client passcode = brand kit + stats only.
+type Role = "superadmin" | "client";
+async function staffCheck(req: Request): Promise<Role | "denied" | "locked"> {
   const ip = clientIp(req);
   const since = new Date(Date.now() - FAIL_WINDOW_MIN * 60000).toISOString();
   const { count } = await db.from("auth_failures").select("*", { count: "exact", head: true }).eq("ip", ip).gte("created_at", since);
   if ((count || 0) >= MAX_FAILS) return "locked";
   const key = req.headers.get("x-staff-key") || "";
-  const stored = await secret("staff_passcode_sha256");
-  if (key && stored && safeEqual(await sha256(key), stored)) return "ok";
+  if (key) {
+    const h = await sha256(key);
+    const sup = await secret("staff_passcode_sha256");
+    if (sup && safeEqual(h, sup)) return "superadmin";
+    const cli = await secret("client_passcode_sha256");
+    if (cli && safeEqual(h, cli)) return "client";
+  }
   await db.from("auth_failures").insert({ ip });
   return "denied";
 }
+// What a client admin may change (brand kit only); everything else is kept as is.
+const CLIENT_BRAND_KEYS = ["app_name", "app_hashtag", "app_logo", "event_logo", "colors", "start_headline", "start_sub", "qr_headline", "guest_headline", "guest_intro", "optin_text", "terms_url"];
+// What a brand profile stores
+const PROFILE_KEYS = ["event_name", "event_hashtag", ...CLIENT_BRAND_KEYS, "frames"];
+function normProfile(d: any) {
+  d = d && typeof d === "object" ? d : {};
+  const b = normBranding(d);
+  const out: Record<string, unknown> = { event_name: textOr(d.event_name, 60, "Event"), event_hashtag: textOr(d.event_hashtag, 60, "") };
+  for (const k of CLIENT_BRAND_KEYS) out[k] = (b as any)[k];
+  out.frames = normFrames(d.frames);
+  return out;
+}
+const SUPER_ONLY = [/^\/heartbeat$/, /^\/upload$/, /^\/admin\/photo\//, /^\/admin\/booth\//, /^\/admin\/passcode$/, /^\/admin\/client-passcode$/, /^\/admin\/profiles/];
 
 // ---------- Branding / config ----------
 const ASSET_BASE = `${Deno.env.get("SUPABASE_URL")}/storage/v1/object/public/branding/`;
@@ -276,9 +296,11 @@ Deno.serve(async (req) => {
     // ---------- Staff ----------
     const auth = await staffCheck(req);
     if (auth === "locked") return json({ error: "Too many attempts — wait 15 minutes" }, 429);
-    if (auth !== "ok") return json({ error: "Unauthorised" }, 401);
+    if (auth === "denied") return json({ error: "Unauthorised" }, 401);
+    const role: Role = auth;
+    if (role !== "superadmin" && SUPER_ONLY.some((r) => r.test(path))) return json({ error: "Not available for client access" }, 403);
 
-    if (req.method === "POST" && path === "/auth") return json({ ok: true });
+    if (req.method === "POST" && path === "/auth") return json({ ok: true, role });
 
     if (req.method === "POST" && path === "/heartbeat") {
       const b = await req.json();
@@ -331,16 +353,38 @@ Deno.serve(async (req) => {
       ]);
       const { data: recent } = await db.from("photos").select("id, frame, storage_path, thumb_path, created_at, claimed_at, shared_at, booth_id").order("created_at", { ascending: false }).limit(60);
       const thumbs: Record<string, string> = {};
-      if (recent?.length) {
+      if (recent?.length && role === "superadmin") {
         const { data: urls } = await db.storage.from("photos").createSignedUrls(recent.map((r) => r.thumb_path || r.storage_path), 3600);
         urls?.forEach((u, i) => { if (u.signedUrl) thumbs[recent[i].id] = u.signedUrl; });
       }
+      // Activity for the last 24 hours, bucketed by hour
+      const since = new Date(Date.now() - 24 * 3600000).toISOString();
+      const [{ data: ph }, { data: ld }] = await Promise.all([
+        db.from("photos").select("created_at").gte("created_at", since).limit(20000),
+        db.from("leads").select("created_at").gte("created_at", since).limit(20000),
+      ]);
+      const hourly: { hour: string; photos: number; leads: number }[] = [];
+      const top = new Date(); top.setUTCMinutes(0, 0, 0);
+      for (let i = 23; i >= 0; i--) hourly.push({ hour: new Date(top.getTime() - i * 3600000).toISOString(), photos: 0, leads: 0 });
+      const bucket = (t: string) => hourly.find((h) => new Date(t).getTime() >= new Date(h.hour).getTime() && new Date(t).getTime() < new Date(h.hour).getTime() + 3600000);
+      (ph || []).forEach((r) => { const b = bucket(r.created_at); if (b) b.photos++; });
+      (ld || []).forEach((r) => { const b = bucket(r.created_at); if (b) b.leads++; });
+      const settings = await getSettings();
+      if (role === "client") {
+        // Client admins see statistics and their brand kit, not guest data or operations
+        const { wifi_name, wifi_password, photo_retention_days, ...brand } = settings as any;
+        return json({ now: new Date().toISOString(), role, stats: { photos, claimed, shared, leads, optins }, settings: brand, hourly, last_photo_at: recent?.[0]?.created_at || null });
+      }
       const { data: leadRows } = await db.from("leads").select("id, photo_id, first_name, last_name, email, postcode, marketing_opt_in, created_at").order("created_at", { ascending: false }).limit(5000);
       const { data: booths } = await db.from("booths").select("*").order("last_seen", { ascending: false });
+      const { data: cp } = await db.from("app_secrets").select("value").eq("key", "client_passcode_sha256").single();
       return json({
+        role,
+        hourly,
+        client_access: !!cp?.value,
         now: new Date().toISOString(),
         stats: { photos, claimed, shared, leads, optins, pending },
-        settings: await getSettings(),
+        settings,
         email_enabled: EMAIL_ENABLED,
         last_photo_at: recent?.[0]?.created_at || null,
         booths: booths || [],
@@ -354,6 +398,26 @@ Deno.serve(async (req) => {
       if (!p) return json({ error: "Not found" }, 404);
       const { data } = await db.storage.from("photos").createSignedUrl(p.storage_path, 600);
       return json({ url: data?.signedUrl });
+    }
+
+    if (req.method === "PUT" && path === "/admin/settings" && role === "client") {
+      // Brand kit only: merge allowed fields over the current settings
+      const b = await req.json();
+      const cur: any = await getSettings();
+      const merged: any = { ...cur };
+      for (const k of CLIENT_BRAND_KEYS) if (k in b) merged[k] = b[k];
+      const frames = normFrames(b.frames ?? cur.frames);
+      const { error } = await db.from("settings").update({
+        event_name: clean(b.event_name ?? cur.event_name, 60) || "Event",
+        frame_message: clean(b.event_hashtag ?? cur.event_hashtag, 60),
+        enabled_frames: frames.filter((f) => f.enabled && f.kind === "template").map((f) => f.template),
+        branding: normBranding(merged),
+        frames,
+        updated_at: new Date().toISOString(),
+      }).eq("id", 1);
+      if (error) throw error;
+      const { wifi_name, wifi_password, photo_retention_days, ...brand } = (await getSettings()) as any;
+      return json(brand);
     }
 
     if (req.method === "PUT" && path === "/admin/settings") {
@@ -388,10 +452,57 @@ Deno.serve(async (req) => {
       return json({ url: ASSET_BASE + name });
     }
 
+    // ---------- Brand profiles (superadmin) ----------
+    if (req.method === "GET" && path === "/admin/profiles") {
+      const { data } = await db.from("brand_profiles").select("id, name, data, created_at, updated_at").order("updated_at", { ascending: false });
+      return json(data || []);
+    }
+    if (req.method === "POST" && path === "/admin/profiles") {
+      const b = await req.json();
+      const name = clean(b.name, 60);
+      if (!name) return json({ error: "Give the profile a name" }, 400);
+      const { count } = await db.from("brand_profiles").select("*", { count: "exact", head: true });
+      if ((count || 0) >= 100) return json({ error: "Up to 100 profiles" }, 400);
+      const { data, error } = await db.from("brand_profiles").insert({ name, data: normProfile(b.data) }).select().single();
+      if (error) throw error;
+      return json(data);
+    }
+    if ((req.method === "PUT" || req.method === "DELETE") && parts[0] === "admin" && parts[1] === "profiles" && UUID.test(parts[2] || "")) {
+      if (req.method === "DELETE") {
+        await db.from("brand_profiles").delete().eq("id", parts[2]);
+        return json({ ok: true });
+      }
+      const b = await req.json();
+      const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      if (b.name !== undefined) { const n = clean(b.name, 60); if (!n) return json({ error: "Give the profile a name" }, 400); patch.name = n; }
+      if (b.data !== undefined) patch.data = normProfile(b.data);
+      const { data, error } = await db.from("brand_profiles").update(patch).eq("id", parts[2]).select().single();
+      if (error) throw error;
+      return json(data);
+    }
+
+    // ---------- Client admin passcode (superadmin) ----------
+    if (req.method === "PUT" && path === "/admin/client-passcode") {
+      const b = await req.json();
+      if (b.disable === true) {
+        await db.from("app_secrets").update({ value: "" }).eq("key", "client_passcode_sha256");
+        return json({ ok: true, client_access: false });
+      }
+      const pc = clean(b.passcode, 100);
+      if (pc.length < 8) return json({ error: "Passcode must be at least 8 characters" }, 400);
+      const h = await sha256(pc);
+      const sup = await secret("staff_passcode_sha256");
+      if (sup && safeEqual(h, sup)) return json({ error: "Use a different passcode from the superadmin one" }, 400);
+      await db.from("app_secrets").update({ value: h }).eq("key", "client_passcode_sha256");
+      return json({ ok: true, client_access: true });
+    }
+
     if (req.method === "PUT" && path === "/admin/passcode") {
       const b = await req.json();
       const pc = clean(b.passcode, 100);
       if (pc.length < 8) return json({ error: "Passcode must be at least 8 characters" }, 400);
+      const cli = await secret("client_passcode_sha256");
+      if (cli && safeEqual(await sha256(pc), cli)) return json({ error: "Use a different passcode from the client one" }, 400);
       await db.from("app_secrets").update({ value: await sha256(pc) }).eq("key", "staff_passcode_sha256");
       return json({ ok: true });
     }
