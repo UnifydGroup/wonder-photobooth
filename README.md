@@ -21,7 +21,8 @@ Live: https://wonder-photobooth.vercel.app · Dashboard: `/admin` · Guest page:
 - **Optional email fallback:** set the `RESEND_API_KEY` and `EMAIL_FROM` edge function secrets.
 
 ## Access
-- **Superadmin passcode:** full dashboard (overview, booth health, photos, leads, all settings, brand profiles, client access, passcodes). It's also the passcode for booth iPads.
+- **Operator passcode:** set by a superadmin under Settings › Operator access. For event staff: connects booth iPads and opens the booth's staff menu. It can't open the dashboard.
+- **Superadmin passcode:** full dashboard (overview, booth health, photos, leads, all settings, brand profiles, access and passcodes). It can also connect booths.
 - **Client passcode:** set by a superadmin under Settings › Client access. Same `/admin` link, but only the statistics dashboard and the brand kit (event, app brand, frames, booth wording, guest page). No guest data, photos, booth controls or passcodes; the server enforces this, and the passcode can't run a booth.
 - **Brand profiles (superadmin):** save the current brand kit as a named profile, then load it later to switch clients.
 

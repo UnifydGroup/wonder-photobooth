@@ -35,7 +35,7 @@ function safeEqual(a: string, b: string) {
   return diff === 0;
 }
 async function secret(key: string) {
-  const { data } = await db.from("app_secrets").select("value").eq("key", key).single();
+  const { data } = await db.from("app_secrets").select("value").eq("key", key).maybeSingle();
   return data?.value as string | undefined;
 }
 const clientIp = (req: Request) =>
@@ -43,7 +43,17 @@ const clientIp = (req: Request) =>
 
 // Returns "ok" | "denied" | "locked"
 // Superadmin passcode = full access (and runs booths). Client passcode = brand kit + stats only.
-type Role = "superadmin" | "client";
+type Role = "superadmin" | "client" | "operator";
+const PASS_KEYS = { superadmin: "staff_passcode_sha256", client: "client_passcode_sha256", operator: "operator_passcode_sha256" } as const;
+// Is this passcode hash already used by another role?
+async function passClash(h: string, own: keyof typeof PASS_KEYS) {
+  for (const [r, k] of Object.entries(PASS_KEYS)) {
+    if (r === own) continue;
+    const v = await secret(k);
+    if (v && safeEqual(h, v)) return r;
+  }
+  return null;
+}
 async function staffCheck(req: Request): Promise<Role | "denied" | "locked"> {
   const ip = clientIp(req);
   const since = new Date(Date.now() - FAIL_WINDOW_MIN * 60000).toISOString();
@@ -56,6 +66,8 @@ async function staffCheck(req: Request): Promise<Role | "denied" | "locked"> {
     if (sup && safeEqual(h, sup)) return "superadmin";
     const cli = await secret("client_passcode_sha256");
     if (cli && safeEqual(h, cli)) return "client";
+    const op = await secret("operator_passcode_sha256");
+    if (op && safeEqual(h, op)) return "operator";
   }
   await db.from("auth_failures").insert({ ip });
   return "denied";
@@ -72,7 +84,8 @@ function normProfile(d: any) {
   out.frames = normFrames(d.frames);
   return out;
 }
-const SUPER_ONLY = [/^\/heartbeat$/, /^\/upload$/, /^\/admin\/photo\//, /^\/admin\/booth\//, /^\/admin\/passcode$/, /^\/admin\/client-passcode$/, /^\/admin\/profiles/];
+const SUPER_ONLY = [/^\/heartbeat$/, /^\/upload$/, /^\/admin\/photo\//, /^\/admin\/booth\//, /^\/admin\/passcode$/, /^\/admin\/client-passcode$/, /^\/admin\/operator-passcode$/, /^\/admin\/profiles/];
+const OPERATOR_OK = ["/auth", "/heartbeat", "/upload"];
 
 // ---------- Branding / config ----------
 const ASSET_BASE = `${Deno.env.get("SUPABASE_URL")}/storage/v1/object/public/branding/`;
@@ -300,7 +313,8 @@ Deno.serve(async (req) => {
     if (auth === "locked") return json({ error: "Too many attempts — wait 15 minutes" }, 429);
     if (auth === "denied") return json({ error: "Unauthorised" }, 401);
     const role: Role = auth;
-    if (role !== "superadmin" && SUPER_ONLY.some((r) => r.test(path))) return json({ error: "Not available for client access" }, 403);
+    if (role === "operator" && !OPERATOR_OK.includes(path)) return json({ error: "Operator passcodes can only run booths" }, 403);
+    if (role === "client" && SUPER_ONLY.some((r) => r.test(path))) return json({ error: "Not available for client access" }, 403);
 
     if (req.method === "POST" && path === "/auth") return json({ ok: true, role });
 
@@ -380,10 +394,12 @@ Deno.serve(async (req) => {
       const { data: leadRows } = await db.from("leads").select("id, photo_id, first_name, last_name, email, postcode, marketing_opt_in, created_at").order("created_at", { ascending: false }).limit(5000);
       const { data: booths } = await db.from("booths").select("*").order("last_seen", { ascending: false });
       const { data: cp } = await db.from("app_secrets").select("value").eq("key", "client_passcode_sha256").single();
+      const { data: op } = await db.from("app_secrets").select("value").eq("key", "operator_passcode_sha256").maybeSingle();
       return json({
         role,
         hourly,
         client_access: !!cp?.value,
+        operator_access: !!op?.value,
         now: new Date().toISOString(),
         stats: { photos, claimed, shared, leads, optins, pending },
         settings,
@@ -484,29 +500,21 @@ Deno.serve(async (req) => {
     }
 
     // ---------- Client admin passcode (superadmin) ----------
-    if (req.method === "PUT" && path === "/admin/client-passcode") {
+    const PASS_PATHS: Record<string, keyof typeof PASS_KEYS> = { "/admin/passcode": "superadmin", "/admin/client-passcode": "client", "/admin/operator-passcode": "operator" };
+    if (req.method === "PUT" && PASS_PATHS[path]) {
+      const which = PASS_PATHS[path];
       const b = await req.json();
-      if (b.disable === true) {
-        await db.from("app_secrets").update({ value: "" }).eq("key", "client_passcode_sha256");
-        return json({ ok: true, client_access: false });
+      if (b.disable === true && which !== "superadmin") {
+        await db.from("app_secrets").upsert({ key: PASS_KEYS[which], value: "" });
+        return json({ ok: true, enabled: false });
       }
       const pc = clean(b.passcode, 100);
       if (pc.length < 8) return json({ error: "Passcode must be at least 8 characters" }, 400);
       const h = await sha256(pc);
-      const sup = await secret("staff_passcode_sha256");
-      if (sup && safeEqual(h, sup)) return json({ error: "Use a different passcode from the superadmin one" }, 400);
-      await db.from("app_secrets").update({ value: h }).eq("key", "client_passcode_sha256");
-      return json({ ok: true, client_access: true });
-    }
-
-    if (req.method === "PUT" && path === "/admin/passcode") {
-      const b = await req.json();
-      const pc = clean(b.passcode, 100);
-      if (pc.length < 8) return json({ error: "Passcode must be at least 8 characters" }, 400);
-      const cli = await secret("client_passcode_sha256");
-      if (cli && safeEqual(await sha256(pc), cli)) return json({ error: "Use a different passcode from the client one" }, 400);
-      await db.from("app_secrets").update({ value: await sha256(pc) }).eq("key", "staff_passcode_sha256");
-      return json({ ok: true });
+      const clash = await passClash(h, which);
+      if (clash) return json({ error: `That's already the ${clash} passcode. Use a different one.` }, 400);
+      await db.from("app_secrets").upsert({ key: PASS_KEYS[which], value: h });
+      return json({ ok: true, enabled: true });
     }
 
     if (req.method === "DELETE" && parts[0] === "admin" && parts[1] === "photo" && UUID.test(parts[2] || "")) {

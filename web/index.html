@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="loading">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
@@ -69,6 +69,7 @@
   #status { position:fixed; top:max(12px,env(safe-area-inset-top)); right:16px; font-size:13px; color:var(--muted); background:var(--panel); border:1px solid var(--line); padding:6px 12px; border-radius:999px; display:none; }
   #status.on { display:block; }
   #staffHot { position:fixed; top:0; left:0; width:90px; height:90px; z-index:5; }
+  html.loading body { visibility:hidden; }
   #staff, #staffLock { background:var(--ink); z-index:10; gap:14px; }
   #lockErr { min-height:20px; color:var(--accent); }
   #staff .btn { min-width:320px; }
@@ -80,9 +81,9 @@
 <!-- 1. Staff setup (first launch) -->
 <section class="screen" id="setup">
   <h1>Photo Booth setup</h1>
-  <p class="sub">Enter the staff passcode to connect this iPad.</p>
+  <p class="sub">Enter the operator passcode to connect this iPad.</p>
   <input id="boothName" type="text" placeholder="Booth name (e.g. Booth 1)" autocomplete="off" maxlength="40">
-  <input id="pass" type="password" placeholder="Staff passcode" autocomplete="off">
+  <input id="pass" type="password" placeholder="Operator passcode" autocomplete="off">
   <div id="setupErr"></div>
   <button class="btn primary" id="setupGo">Connect</button>
   <button class="btn ghost" id="setupDash" style="margin-top:12px">Open staff dashboard</button>
@@ -91,8 +92,8 @@
 <!-- Staff menu passcode (when switched on in Settings) -->
 <section class="screen" id="staffLock">
   <h1>Staff menu</h1>
-  <p class="sub">Enter the superadmin passcode.</p>
-  <input id="lockPass" type="password" placeholder="Superadmin passcode" autocomplete="off">
+  <p class="sub">Enter the operator or superadmin passcode.</p>
+  <input id="lockPass" type="password" placeholder="Passcode" autocomplete="off">
   <div id="lockErr"></div>
   <button class="btn primary" id="lockGo">Unlock</button>
   <button class="btn ghost" id="lockCancel">Cancel</button>
@@ -522,9 +523,14 @@
   });
   let lockReturn = "booth", lockFails = 0;
   // Checked on the iPad against the passcode it was connected with, so it works offline too.
-  $("lockGo").onclick = () => {
+  $("lockGo").onclick = async () => {
     if (lockFails >= 5) { $("lockErr").textContent = "Too many attempts — wait a minute"; return; }
-    if ($("lockPass").value.trim() === staffKey) { lockFails = 0; openStaffMenu(); }
+    const entered = $("lockPass").value.trim();
+    if (!entered) return;
+    // The passcode this iPad connected with works offline; the other booth passcode is checked online.
+    let ok = entered === staffKey;
+    if (!ok) { $("lockErr").textContent = "Checking…"; ok = (await checkKey(entered)) === true; }
+    if (ok) { lockFails = 0; $("lockErr").textContent = ""; openStaffMenu(); }
     else {
       lockFails++; $("lockErr").textContent = "Incorrect passcode";
       if (lockFails >= 5) setTimeout(() => { lockFails = 0; }, 60000);
@@ -553,7 +559,7 @@
       if (r.status === 429) return "locked";
       if (!r.ok) return false;
       const d = await r.json().catch(() => ({}));
-      return d.role && d.role !== "superadmin" ? "client" : true; // client passcodes can't run a booth
+      return d.role === "client" ? "client" : true; // operator or superadmin can run a booth; client can't
     } catch (_) { return null; }
   }
   $("setupGo").onclick = async () => {
@@ -562,7 +568,7 @@
     $("setupErr").textContent = "Checking…";
     const ok = await checkKey(key);
     if (ok === "locked") { $("setupErr").textContent = "Too many attempts — wait 15 minutes"; return; }
-    if (ok === "client") { $("setupErr").textContent = "That's a client dashboard passcode. Booths need the superadmin passcode."; return; }
+    if (ok === "client") { $("setupErr").textContent = "That's a client dashboard passcode. Booths need the operator passcode."; return; }
     if (ok) {
       staffKey = key;
       boothName = $("boothName").value.trim() || boothName;
@@ -595,7 +601,11 @@
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
   applyBranding();
   requestAnimationFrame(loop);
-  if (staffKey) { loadSettings(); show("start"); pumpQueue(); heartbeat(); }
+  // Always use the saved branding, even before this iPad is connected
+  const ready = () => document.documentElement.classList.remove("loading");
+  if (localStorage.getItem("settings")) ready(); else setTimeout(ready, 2500);
+  loadSettings().finally(ready);
+  if (staffKey) { show("start"); pumpQueue(); heartbeat(); }
   else show("setup");
 })();
 </script>

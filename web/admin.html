@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="loading">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -18,7 +18,7 @@
   main { max-width:1180px; margin:0 auto; padding:24px; }
   .hidden { display:none !important; }
   .btn { background:var(--panel); color:var(--text); border:1px solid var(--line); padding:10px 16px; border-radius:10px; font:inherit; font-weight:600; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:6px; }
-  .btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .btn.primary { background:var(--accent); border-color:var(--accent); color:var(--on-accent,#fff); }
   .btn.small { padding:6px 10px; font-size:13px; }
   body:not(.from-booth) .booth-back { display:none !important; }
   .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:14px; margin-bottom:28px; }
@@ -50,6 +50,8 @@
   .framepick input { display:none; }
   .panel { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:20px; }
   #login { max-width:380px; margin:12vh auto; text-align:center; }
+  #loginLogo img { max-width:220px; max-height:64px; margin-bottom:22px; }
+  html.loading body { visibility:hidden; }
   #login h1 { font-size:28px; margin:0 0 6px; } #login p { color:var(--muted); margin:0 0 22px; }
   .muted { color:var(--muted); } .err { color:var(--accent); min-height:20px; margin:8px 0; }
   .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--text); color:var(--ink); padding:10px 18px; border-radius:999px; font-weight:600; opacity:0; transition:opacity .2s; pointer-events:none; }
@@ -129,6 +131,7 @@
 <body>
 
 <section id="login">
+  <div id="loginLogo"></div>
   <h1>Staff dashboard</h1>
   <p>Enter your superadmin or client passcode</p>
   <input type="password" id="pass" placeholder="Passcode" autocomplete="current-password">
@@ -307,8 +310,16 @@
         </div>
 
         <div class="panel" data-role="super">
+          <h2>Operator access</h2>
+          <p class="hint">For event staff. Sets up booth iPads and opens the booth's staff menu. It can't open this dashboard. Booths connected with it need the new passcode if you change it, so don't change it during an event.</p>
+          <p style="margin:0 0 14px">Status: <span class="pill" id="opStatus"></span></p>
+          <div class="field"><label for="opPass">New operator passcode (min 8 characters)</label><input type="password" id="opPass" autocomplete="new-password"></div>
+          <div class="btnrow"><button class="btn" id="saveOpPass">Set operator passcode</button><button class="btn" id="disableOp">Turn off operator access</button></div>
+        </div>
+
+        <div class="panel" data-role="super">
           <h2>Superadmin passcode</h2>
-          <p class="hint">Full access to this dashboard, and the passcode for booth iPads. Booths need the new passcode, so don't change it during an event.</p>
+          <p class="hint">Full access to this dashboard. It can also set up booth iPads. Booths connected with it need the new passcode, so don't change it during an event.</p>
           <div class="field"><label for="newPass">New passcode (min 8 characters)</label><input type="password" id="newPass" autocomplete="new-password"></div>
           <button class="btn" id="savePass">Update passcode</button>
         </div>
@@ -335,6 +346,22 @@
   const API = window.BOOTH_CONFIG.API;
   const F = window.Frames;
   const $ = (id) => document.getElementById(id);
+  // ---------- saved branding as the dashboard's theme ----------
+  function onColor(hex) { const n = parseInt(hex.slice(1), 16), l = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255; return l > 0.6 ? "#1A1A1A" : "#FFFFFF"; }
+  function brand(c) {
+    if (!c || !c.colors) return;
+    const root = document.documentElement.style;
+    root.setProperty("--accent", c.colors.accent); root.setProperty("--on-accent", onColor(c.colors.accent));
+    const logo = c.event_logo || c.app_logo, box = $("loginLogo");
+    box.innerHTML = "";
+    if (logo) { const i = new Image(); i.src = logo; i.alt = c.event_name || ""; box.append(i); }
+    try { localStorage.setItem("config", JSON.stringify({ colors: c.colors, event_logo: c.event_logo, app_logo: c.app_logo, event_name: c.event_name })); } catch (_) {}
+  }
+  const ready = () => document.documentElement.classList.remove("loading");
+  try { const cached = JSON.parse(localStorage.getItem("config") || "null"); if (cached) { brand(cached); ready(); } } catch (_) {}
+  setTimeout(ready, 2500);
+  fetch(API + "/config").then((r) => r.json()).then((c) => { brand(c); ready(); }).catch(ready);
+
   // Opened from the booth's staff menu: always ask for a passcode, and sign out when leaving.
   const fromBooth = new URLSearchParams(location.search).has("booth");
   if (fromBooth) { document.body.classList.add("from-booth"); sessionStorage.removeItem("staffKey"); sessionStorage.removeItem("role"); }
@@ -373,6 +400,7 @@
       if (r.status === 429) { $("loginErr").textContent = "Too many attempts — wait 15 minutes"; return; }
       if (!r.ok) throw 0;
       const d = await r.json();
+      if (d.role === "operator") { key = null; $("loginErr").textContent = "That's the operator passcode, which only runs booths. Use your superadmin or client passcode."; return; }
       role = d.role || "superadmin";
       sessionStorage.setItem("staffKey", key);
       sessionStorage.setItem("role", role);
@@ -558,12 +586,14 @@
   const clone = (o) => JSON.parse(JSON.stringify(o));
   const getPath = (o, p) => p.split(".").reduce((a, k) => (a == null ? a : a[k]), o);
   const setPath = (o, p, v) => { const ks = p.split("."); let a = o; ks.slice(0, -1).forEach((k) => (a = a[k])); a[ks[ks.length - 1]] = v; };
-  const TPL_DEFAULTS = {
-    classic: { bg: "#FFFFFF", fg: "#111111", accent: "#FF5A36" },
-    polaroid: { bg: "#F5EFE6", fg: "#2B2522", accent: "#8A7F76" },
-    bold: { bg: "#0E0E12", fg: "#FFFFFF", accent: "#FF5A36" },
-    minimal: { bg: "#000000", fg: "#FFFFFF", accent: "#FFFFFF" },
+  // New frames start in the saved brand colours
+  const TPL_BASE = {
+    classic: () => ({ bg: "#FFFFFF", fg: "#111111", accent: cfg?.colors?.accent || "#FF5A36" }),
+    polaroid: () => ({ bg: "#F5EFE6", fg: "#2B2522", accent: "#8A7F76" }),
+    bold: () => ({ bg: cfg?.colors?.background || "#0E0E12", fg: cfg?.colors?.text || "#FFFFFF", accent: cfg?.colors?.accent || "#FF5A36" }),
+    minimal: () => ({ bg: "#000000", fg: "#FFFFFF", accent: "#FFFFFF" }),
   };
+  const TPL_DEFAULTS = new Proxy({}, { get: (_, k) => (TPL_BASE[k] || TPL_BASE.classic)() });
   const COLOR_LABELS = {
     classic: ["Border", "Title", "Hashtag"], polaroid: ["Paper", "Title", "Hashtag"],
     bold: ["Shade", "Text", "Accent"], minimal: ["Tag shade", "Text", "Border line"],
@@ -582,7 +612,8 @@
     cfg = clone(data.settings);
     fillForm();
     markDirty(false);
-    if (isSuper()) setClientStatus(!!data.client_access);
+    if (isSuper()) { setClientStatus(!!data.client_access); setOpStatus(!!data.operator_access); }
+    brand(data.settings);
   }
   function fillForm() {
     document.querySelectorAll("[data-bind]").forEach((el) => {
@@ -658,6 +689,28 @@
     try {
       await api("/admin/profiles", { method: "POST", body: JSON.stringify({ name, data: profileData() }) });
       toast(`Saved "${name}"`); loadProfiles();
+    } catch (e) { toast(e.message); }
+  };
+
+  // ---------- operator access (superadmin) ----------
+  function setOpStatus(on) {
+    data.operator_access = on;
+    $("opStatus").textContent = on ? "On" : "Off";
+    $("opStatus").className = "pill " + (on ? "on" : "off");
+    $("disableOp").disabled = !on;
+  }
+  $("saveOpPass").onclick = async () => {
+    try {
+      await api("/admin/operator-passcode", { method: "PUT", body: JSON.stringify({ passcode: $("opPass").value }) });
+      $("opPass").value = ""; setOpStatus(true);
+      toast("Operator passcode set. Use it to connect booth iPads.");
+    } catch (e) { toast(e.message); }
+  };
+  $("disableOp").onclick = async () => {
+    if (!confirm("Turn off operator access? Booths connected with the operator passcode will disconnect.")) return;
+    try {
+      await api("/admin/operator-passcode", { method: "PUT", body: JSON.stringify({ disable: true }) });
+      setOpStatus(false); toast("Operator access turned off");
     } catch (e) { toast(e.message); }
   };
 
