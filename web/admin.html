@@ -20,6 +20,7 @@
   .btn { background:var(--panel); color:var(--text); border:1px solid var(--line); padding:10px 16px; border-radius:10px; font:inherit; font-weight:600; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:6px; }
   .btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
   .btn.small { padding:6px 10px; font-size:13px; }
+  body:not(.from-booth) .booth-back { display:none !important; }
   .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:14px; margin-bottom:28px; }
   .stat { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:18px 20px; }
   .stat .n { font-size:36px; font-weight:800; letter-spacing:-0.02em; font-variant-numeric:tabular-nums; }
@@ -129,10 +130,11 @@
 
 <section id="login">
   <h1>Staff dashboard</h1>
-  <p>Enter the staff passcode</p>
+  <p>Enter your superadmin or client passcode</p>
   <input type="password" id="pass" placeholder="Passcode" autocomplete="current-password">
   <div class="err" id="loginErr"></div>
   <button class="btn primary" id="loginGo" style="width:100%;justify-content:center;padding:13px">Sign in</button>
+  <button class="btn booth-back" id="loginBack" style="width:100%;justify-content:center;padding:13px;margin-top:10px">Back to booth</button>
 </section>
 
 <div id="app" class="hidden">
@@ -146,6 +148,7 @@
     </nav>
     <div style="display:flex;gap:8px">
       <button class="btn small" id="refresh">Refresh</button>
+      <button class="btn small booth-back" id="headBack">Back to booth</button>
       <button class="btn small" id="logout">Sign out</button>
     </div>
   </header>
@@ -328,6 +331,9 @@
   const API = window.BOOTH_CONFIG.API;
   const F = window.Frames;
   const $ = (id) => document.getElementById(id);
+  // Opened from the booth's staff menu: always ask for a passcode, and sign out when leaving.
+  const fromBooth = new URLSearchParams(location.search).has("booth");
+  if (fromBooth) { document.body.classList.add("from-booth"); sessionStorage.removeItem("staffKey"); sessionStorage.removeItem("role"); }
   let key = sessionStorage.getItem("staffKey");
   let role = sessionStorage.getItem("role") || "superadmin";
   let data = null;
@@ -372,6 +378,14 @@
   $("pass").addEventListener("keydown", (e) => e.key === "Enter" && $("loginGo").click());
   function logout() { sessionStorage.removeItem("staffKey"); sessionStorage.removeItem("role"); key = null; $("app").classList.add("hidden"); $("login").classList.remove("hidden"); }
   $("logout").onclick = logout;
+  function backToBooth() {
+    if (dirty && !confirm("You have unsaved changes. Leave without saving?")) return;
+    dirty = false;
+    sessionStorage.removeItem("staffKey"); sessionStorage.removeItem("role");
+    location.replace("/");
+  }
+  $("loginBack").onclick = backToBooth;
+  $("headBack").onclick = backToBooth;
 
   // ---------- Tabs ----------
   document.querySelectorAll("nav button").forEach((b) => b.onclick = () => {

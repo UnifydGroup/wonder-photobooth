@@ -136,6 +136,7 @@
 <section class="screen" id="staff">
   <h1>Staff menu</h1>
   <p class="sub" id="staffInfo"></p>
+  <button class="btn secondary" id="sDash">Open staff dashboard</button>
   <button class="btn secondary" id="sRetry">Retry uploads now</button>
   <button class="btn secondary" id="sReload">Reload event settings</button>
   <button class="btn ghost" id="sSignout">Disconnect this iPad</button>
@@ -503,6 +504,7 @@
       show("staff");
     }
   });
+  $("sDash").onclick = () => location.assign("/admin?booth=1");
   $("sRetry").onclick = () => pumpQueue();
   $("sReload").onclick = async () => { await loadSettings(); show("booth"); };
   $("sSignout").onclick = () => { localStorage.removeItem("staffKey"); location.reload(); };
