@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0E0E12">
+<meta name="robots" content="noindex">
+<title>Your photo</title>
+<style>
+  :root { --ink:#0E0E12; --panel:#1A1A22; --line:#2C2C38; --text:#F5EFE6; --muted:#9A96A0; --accent:#FF5A36; }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; background:var(--ink); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif; }
+  main { max-width:460px; margin:0 auto; padding:max(28px,env(safe-area-inset-top)) 22px 40px; }
+  .brand { font-weight:800; letter-spacing:.2em; text-transform:uppercase; font-size:12px; color:var(--muted); }
+  h1 { font-size:30px; line-height:1.1; margin:10px 0 8px; letter-spacing:-0.02em; }
+  p { color:var(--muted); margin:0 0 22px; line-height:1.45; }
+  label { display:block; font-size:14px; font-weight:600; margin:0 0 6px; }
+  input[type=text], input[type=email] { width:100%; padding:15px 16px; font-size:17px; border-radius:12px; border:1.5px solid var(--line); background:var(--panel); color:var(--text); margin-bottom:14px; outline:none; }
+  input:focus { border-color:var(--accent); }
+  .row { display:flex; gap:10px; } .row > div { flex:1; }
+  .check { display:flex; gap:12px; align-items:flex-start; margin:6px 0 14px; font-size:14px; color:var(--text); line-height:1.4; }
+  .check input { width:22px; height:22px; margin:0; flex:none; accent-color:var(--accent); }
+  .check a { color:var(--text); }
+  .btn { display:flex; align-items:center; justify-content:center; gap:10px; width:100%; padding:17px; border-radius:999px; font-size:18px; font-weight:700; border:0; cursor:pointer; text-decoration:none; margin-top:10px; }
+  .primary { background:var(--accent); color:#fff; }
+  .secondary { background:var(--text); color:var(--ink); }
+  .ghost { background:transparent; color:var(--text); border:1.5px solid var(--line); }
+  .btn:disabled { opacity:.5; }
+  #err { color:var(--accent); min-height:20px; font-size:15px; margin:4px 0; }
+  .photo { width:100%; aspect-ratio:4/5; border-radius:16px; display:block; background:var(--panel); box-shadow:0 18px 50px rgba(0,0,0,.5); margin:8px 0 18px; object-fit:cover; }
+  .tip { font-size:14px; color:var(--muted); background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin-top:18px; line-height:1.45; }
+  .spinner { width:38px; height:38px; border:4px solid var(--line); border-top-color:var(--accent); border-radius:50%; animation:spin 1s linear infinite; margin:40px auto 16px; }
+  @keyframes spin { to { transform:rotate(360deg) } }
+  .hidden { display:none !important; }
+  .fine { font-size:12px; color:var(--muted); margin-top:18px; }
+  .brandbox { min-height:18px; }
+  .brandbox img { max-height:64px; max-width:70%; object-fit:contain; display:block; }
+  .applogo { display:block; margin:36px auto 0; max-height:36px; max-width:160px; object-fit:contain; opacity:.8; }
+</style>
+</head>
+<body>
+<main>
+  <div class="brandbox" id="brand">&nbsp;</div>
+
+  <!-- Data capture -->
+  <section id="form">
+    <h1 id="gHead">Your photo is ready</h1>
+    <p id="gIntro">Pop in your details to unlock your photo, then share it straight to Instagram or Facebook.</p>
+    <form id="f" novalidate>
+      <div class="row">
+        <div><label for="fn">First name</label><input type="text" id="fn" autocomplete="given-name" required></div>
+        <div><label for="ln">Last name</label><input type="text" id="ln" autocomplete="family-name"></div>
+      </div>
+      <label for="em">Email</label>
+      <input type="email" id="em" autocomplete="email" inputmode="email" required>
+      <label for="pc">Postcode <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+      <input type="text" id="pc" autocomplete="postal-code" inputmode="numeric" maxlength="10">
+      <label class="check"><input type="checkbox" id="terms"> <span id="termsText">I agree to the terms &amp; privacy policy.</span></label>
+      <label class="check"><input type="checkbox" id="optin"> <span id="optinText">Yes, send me news and offers. You can unsubscribe at any time.</span></label>
+      <div id="err"></div>
+      <button class="btn primary" id="submit" type="submit">Get my photo</button>
+    </form>
+  </section>
+
+  <!-- Waiting for upload -->
+  <section id="wait" class="hidden">
+    <div class="spinner" id="spin"></div>
+    <h1 style="text-align:center" id="waitTitle">Your photo is on its way…</h1>
+    <p style="text-align:center" id="waitText">It's still uploading from the booth. This page will update automatically.</p>
+    <button class="btn secondary hidden" id="retry">Check again</button>
+  </section>
+
+  <!-- Reveal + share -->
+  <section id="reveal" class="hidden">
+    <h1>Looking good!</h1>
+    <img class="photo" id="img" alt="Your photo booth photo">
+    <button class="btn primary" id="share">Share to Instagram or Facebook</button>
+    <a class="btn secondary" id="save" download="photo.jpg">Save photo</a>
+    <div class="tip" id="tip">Tap <b>Share</b>, then choose <b>Instagram</b> or <b>Facebook</b> from the menu.</div>
+    <p class="fine">Your photo link is private and expires after 24 hours. Save it to keep it.</p>
+  </section>
+
+  <!-- Error -->
+  <section id="bad" class="hidden">
+    <h1>Hmm, that link doesn't look right</h1>
+    <p>Try scanning the QR code at the booth again.</p>
+  </section>
+  <img id="appLogo" class="applogo hidden" alt="">
+</main>
+
+<script src="/config.js"></script>
+<script>
+(() => {
+  const API = window.BOOTH_CONFIG.API;
+  const $ = (id) => document.getElementById(id);
+  const id = (location.pathname.match(/\/p\/([0-9a-f-]{36})/i) || [])[1] || new URLSearchParams(location.search).get("id");
+  const show = (s) => ["form", "wait", "reveal", "bad"].forEach((k) => $(k).classList.toggle("hidden", k !== s));
+  let shareFile = null, lastBody = null;
+
+  if (!id || !/^[0-9a-f-]{36}$/i.test(id)) return show("bad");
+
+  fetch(`${API}/photo/${id}`).then((r) => r.json()).then((d) => { if (d.error) show("bad"); }).catch(() => {});
+
+  // Branding from the dashboard: colours, logos and wording
+  const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`; };
+  fetch(`${API}/config`).then((r) => r.json()).then((c) => {
+    const col = c.colors || {}, root = document.documentElement.style;
+    if (col.background) {
+      root.setProperty("--ink", col.background); root.setProperty("--text", col.text); root.setProperty("--accent", col.accent);
+      root.setProperty("--muted", rgba(col.text, 0.62)); root.setProperty("--panel", rgba(col.text, 0.07)); root.setProperty("--line", rgba(col.text, 0.16));
+      document.querySelector('meta[name="theme-color"]').content = col.background;
+    }
+    const b = $("brand");
+    if (c.event_logo) { b.innerHTML = ""; const i = new Image(); i.src = c.event_logo; i.alt = c.event_name || ""; b.append(i); }
+    else b.textContent = c.event_name || "";
+    if (c.app_logo) { $("appLogo").src = c.app_logo; $("appLogo").alt = c.app_name || ""; $("appLogo").classList.remove("hidden"); }
+    if (c.guest_headline) $("gHead").textContent = c.guest_headline;
+    if (c.guest_intro) $("gIntro").textContent = c.guest_intro;
+    if (c.optin_text) $("optinText").textContent = c.optin_text;
+    if (c.terms_url) {
+      const t = $("termsText"); t.textContent = "I agree to the ";
+      const a = document.createElement("a"); a.href = c.terms_url; a.target = "_blank"; a.rel = "noopener"; a.textContent = "terms & privacy policy";
+      t.append(a, ".");
+    }
+    document.title = `${c.event_name || "Your photo"} · Your photo`;
+  }).catch(() => {});
+
+  // Already unlocked on this phone? Show it again.
+  const saved = sessionStorage.getItem("photo:" + id);
+  if (saved) reveal(JSON.parse(saved));
+
+
+  $("f").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const body = {
+      id,
+      first_name: $("fn").value,
+      last_name: $("ln").value,
+      email: $("em").value,
+      postcode: $("pc").value,
+      terms_accepted: $("terms").checked,
+      marketing_opt_in: $("optin").checked,
+    };
+    if (!body.first_name.trim()) return err("Please enter your first name");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email.trim())) return err("Please enter a valid email");
+    if (!body.terms_accepted) return err("Please accept the terms to continue");
+    err("");
+    $("submit").disabled = true;
+    await claim(body, 0);
+    $("submit").disabled = false;
+  });
+
+  async function claim(body, attempt) {
+    try {
+      const r = await fetch(`${API}/claim`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const d = await r.json();
+      if (r.ok) {
+        sessionStorage.setItem("photo:" + id, JSON.stringify(d));
+        return reveal(d);
+      }
+      if (d.pending) {
+        show("wait");
+        lastBody = body;
+        // Details are already saved server-side, so nothing is lost if the guest leaves.
+        if (attempt === 5 && d.email_fallback) {
+          $("waitTitle").textContent = "We'll email it to you";
+          $("waitText").textContent = `Your photo is still uploading. We'll send it to ${body.email.trim()} as soon as it arrives, so you can close this page. If you keep it open, it'll appear here too.`;
+        }
+        if (attempt < 40) {
+          await new Promise((res) => setTimeout(res, 3000));
+          return claim(body, attempt + 1);
+        }
+        $("spin").classList.add("hidden");
+        $("retry").classList.remove("hidden");
+        if (!d.email_fallback) {
+          $("waitTitle").textContent = "Almost there";
+          $("waitText").textContent = "The booth is having trouble uploading right now. Your details are saved. Tap Check again in a minute, or reopen this page later from your browser history.";
+        }
+        return;
+      }
+      show("form");
+      err(d.error || "Something went wrong — please try again");
+    } catch (_) {
+      show("form");
+      err("No connection — please try again");
+    }
+  }
+
+  function err(m) { $("err").textContent = m; }
+
+  $("retry").onclick = () => {
+    if (!lastBody) return;
+    $("retry").classList.add("hidden");
+    $("spin").classList.remove("hidden");
+    claim(lastBody, 20);
+  };
+
+  async function reveal(d) {
+    show("reveal");
+    $("img").src = d.url;
+    $("save").href = d.download_url || d.url;
+    // Fetch the image now so the share sheet opens instantly on tap (iOS requires this)
+    try {
+      const blob = await (await fetch(d.url)).blob();
+      shareFile = new File([blob], "photo.jpg", { type: "image/jpeg" });
+    } catch (_) {}
+    if (!(shareFile && navigator.canShare && navigator.canShare({ files: [shareFile] }))) {
+      $("share").classList.add("hidden");
+      $("tip").innerHTML = "Tap <b>Save photo</b>, then open Instagram or Facebook and post it from your camera roll.";
+    }
+  }
+
+  $("share").onclick = async () => {
+    if (!shareFile) return;
+    try {
+      await navigator.share({ files: [shareFile] });
+      fetch(`${API}/shared`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    } catch (_) { /* user cancelled */ }
+  };
+})();
+</script>
+</body>
+</html>

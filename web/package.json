@@ -1,0 +1,6 @@
+{
+  "name": "wonder-photobooth",
+  "private": true,
+  "scripts": { "build": "node build.mjs" },
+  "dependencies": { "qrcode-generator": "1.4.4" }
+}

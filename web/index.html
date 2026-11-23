@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Photo Booth">
+<meta name="theme-color" content="#0E0E12">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icons/icon-180.png">
+<title>Photo Booth</title>
+<style>
+  :root { --ink:#0E0E12; --panel:#1A1A22; --line:#2C2C38; --text:#F5EFE6; --muted:#9A96A0; --accent:#FF5A36; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; height:100%; background:var(--ink); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif; overflow:hidden; user-select:none; -webkit-user-select:none; touch-action:manipulation; }
+  button { font:inherit; border:0; cursor:pointer; }
+  .screen { position:fixed; inset:0; display:none; flex-direction:column; align-items:center; justify-content:center; padding:max(24px,env(safe-area-inset-top)) 24px max(24px,env(safe-area-inset-bottom)); }
+  .screen.on { display:flex; }
+  h1 { font-size:clamp(32px,5vw,56px); margin:0 0 8px; letter-spacing:-0.02em; font-weight:800; }
+  .sub { color:var(--muted); font-size:clamp(16px,2.2vw,22px); margin:0 0 28px; text-align:center; }
+  .btn { padding:22px 44px; border-radius:999px; font-size:clamp(20px,2.6vw,28px); font-weight:700; transition:transform .1s; }
+  .btn:active { transform:scale(.96); }
+  .btn.primary { background:var(--accent); color:#fff; box-shadow:0 10px 30px rgba(255,90,54,.35); }
+  .btn.secondary { background:var(--text); color:var(--ink); }
+  .btn.ghost { background:transparent; color:var(--muted); border:2px solid var(--line); }
+  .btn:disabled { opacity:.4; }
+
+  /* Setup */
+  #setup input { width:min(420px,80vw); padding:20px 24px; font-size:22px; border-radius:16px; border:2px solid var(--line); background:var(--panel); color:var(--text); text-align:center; margin-bottom:16px; }
+  #setupErr { color:var(--accent); min-height:24px; margin-bottom:12px; }
+
+  /* Booth layout */
+  #booth { justify-content:space-between; gap:18px; }
+  .brand { font-weight:800; letter-spacing:.2em; text-transform:uppercase; font-size:14px; color:var(--muted); }
+  .brandbox { display:flex; align-items:center; justify-content:center; min-height:24px; }
+  .brandbox img { max-height:clamp(48px,8vh,96px); max-width:60vw; object-fit:contain; }
+  .applogo { position:fixed; right:24px; bottom:max(20px,env(safe-area-inset-bottom)); max-height:44px; max-width:180px; object-fit:contain; opacity:.85; display:none; }
+  .applogo.on { display:block; }
+  .stage { position:relative; flex:1; min-height:0; display:flex; align-items:center; justify-content:center; width:100%; }
+  .stage canvas { height:100%; max-width:100%; aspect-ratio:4/5; object-fit:contain; border-radius:18px; box-shadow:0 20px 60px rgba(0,0,0,.5); background:#000; }
+  #countdown { position:absolute; inset:0; display:none; align-items:center; justify-content:center; pointer-events:none; }
+  #countdown span { font-size:clamp(160px,30vh,320px); font-weight:900; color:#fff; text-shadow:0 8px 40px rgba(0,0,0,.6); animation:pop 1s ease-out; }
+  @keyframes pop { 0%{transform:scale(1.6);opacity:0} 20%{opacity:1} 100%{transform:scale(.9);opacity:.85} }
+  #flash { position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; transition:opacity .5s; }
+  #flash.go { opacity:1; transition:none; }
+  .frames { display:flex; gap:14px; justify-content:center; flex-wrap:wrap; }
+  .frames button { background:none; padding:0; border-radius:12px; outline:3px solid transparent; outline-offset:3px; display:flex; flex-direction:column; align-items:center; gap:6px; color:var(--muted); font-size:14px; font-weight:600; }
+  .frames button.sel { outline-color:var(--accent); color:var(--text); }
+  .frames canvas { width:clamp(64px,9vw,96px); aspect-ratio:4/5; border-radius:10px; display:block; }
+  .controls { display:flex; gap:16px; justify-content:center; align-items:center; min-height:86px; }
+  .hint { color:var(--muted); font-size:16px; }
+
+  /* QR screen */
+  #qr { gap:24px; }
+  .qrwrap { display:flex; gap:40px; align-items:center; justify-content:center; flex-wrap:wrap; }
+  #qrThumb { height:min(50vh,520px); aspect-ratio:4/5; border-radius:14px; box-shadow:0 20px 60px rgba(0,0,0,.5); }
+  #qrCode { background:#fff; padding:22px; border-radius:22px; width:min(42vh,380px); aspect-ratio:1; }
+  #qrCode svg { width:100%; height:100%; display:block; }
+  #qrTimer { color:var(--muted); font-size:15px; }
+  #wifiBox { display:none; align-items:center; gap:16px; background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:12px 18px; font-size:17px; color:var(--muted); line-height:1.4; }
+  #wifiBox.on { display:flex; }
+  #wifiBox b, #wifiText { color:var(--text); }
+  #wifiQr { width:88px; height:88px; background:#fff; padding:6px; border-radius:8px; flex:none; }
+  #wifiQr svg { width:100%; height:100%; display:block; }
+
+  /* Status + staff */
+  #status { position:fixed; top:max(12px,env(safe-area-inset-top)); right:16px; font-size:13px; color:var(--muted); background:var(--panel); border:1px solid var(--line); padding:6px 12px; border-radius:999px; display:none; }
+  #status.on { display:block; }
+  #staffHot { position:fixed; top:0; left:0; width:90px; height:90px; z-index:5; }
+  #staff { background:rgba(14,14,18,.96); z-index:10; gap:14px; }
+  #staff .btn { min-width:320px; }
+  #camErr { color:var(--accent); text-align:center; max-width:560px; }
+</style>
+</head>
+<body>
+
+<!-- 1. Staff setup (first launch) -->
+<section class="screen" id="setup">
+  <h1>Photo Booth setup</h1>
+  <p class="sub">Enter the staff passcode to connect this iPad.</p>
+  <input id="boothName" type="text" placeholder="Booth name (e.g. Booth 1)" autocomplete="off" maxlength="40">
+  <input id="pass" type="password" placeholder="Staff passcode" autocomplete="off">
+  <div id="setupErr"></div>
+  <button class="btn primary" id="setupGo">Connect</button>
+</section>
+
+<!-- 2. Tap to start (needed for camera + wake lock on iPad) -->
+<section class="screen" id="start">
+  <div class="brandbox" id="startBrand"></div>
+  <h1 style="margin-top:12px" id="startHead">Ready when you are</h1>
+  <p class="sub" id="startSub">Tap to start the booth</p>
+  <button class="btn primary" id="startGo">Start booth</button>
+  <p id="camErr"></p>
+  <img class="applogo" id="appLogo" alt="">
+</section>
+
+<!-- 3. Live booth -->
+<section class="screen" id="booth">
+  <div class="brandbox" id="boothBrand"></div>
+  <div class="stage">
+    <canvas id="preview" width="720" height="900"></canvas>
+    <div id="countdown"><span id="countNum">5</span></div>
+  </div>
+  <div id="pickerRow">
+    <div class="frames" id="frames"></div>
+  </div>
+  <div class="controls" id="liveControls">
+    <button class="btn primary" id="shoot">Take photo</button>
+  </div>
+  <div class="controls" id="reviewControls" style="display:none">
+    <button class="btn ghost" id="cancel">Cancel</button>
+    <button class="btn secondary" id="retake">Retake</button>
+    <button class="btn primary" id="accept">Accept</button>
+  </div>
+</section>
+
+<!-- 4. QR handoff -->
+<section class="screen" id="qr">
+  <h1 id="qrHead">Scan to get your photo</h1>
+  <p class="sub" style="margin:0">Point your phone camera at the code</p>
+  <div class="qrwrap">
+    <canvas id="qrThumb" width="432" height="540"></canvas>
+    <div id="qrCode"></div>
+  </div>
+  <div id="wifiBox">
+    <div id="wifiQr"></div>
+    <div><b>No signal?</b> Join the Wi-Fi<br><span id="wifiText"></span></div>
+  </div>
+  <button class="btn secondary" id="done">Done</button>
+  <div id="qrTimer"></div>
+</section>
+
+<!-- Staff menu: tap top-left corner 5 times -->
+<section class="screen" id="staff">
+  <h1>Staff menu</h1>
+  <p class="sub" id="staffInfo"></p>
+  <button class="btn secondary" id="sRetry">Retry uploads now</button>
+  <button class="btn secondary" id="sReload">Reload event settings</button>
+  <button class="btn ghost" id="sSignout">Disconnect this iPad</button>
+  <button class="btn primary" id="sClose">Back to booth</button>
+</section>
+
+<div id="flash"></div>
+<div id="status"></div>
+<div id="staffHot"></div>
+<video id="video" playsinline muted autoplay style="display:none"></video>
+
+<script src="/config.js"></script>
+<script src="/frames.js"></script>
+<script src="/qrcode.js"></script>
+<script>
+(() => {
+  const C = window.BOOTH_CONFIG;
+  const F = window.Frames;
+  const DEFAULT_FRAMES = ["classic", "polaroid", "bold", "minimal"].map((t) => ({
+    id: t, kind: "template", template: t, name: F.TEMPLATES[t].name, enabled: true,
+    bg: { classic: "#FFFFFF", polaroid: "#F5EFE6", bold: "#0E0E12", minimal: "#000000" }[t],
+    fg: { classic: "#111111", polaroid: "#2B2522", bold: "#FFFFFF", minimal: "#FFFFFF" }[t],
+    accent: { classic: "#FF5A36", polaroid: "#8A7F76", bold: "#FF5A36", minimal: "#FFFFFF" }[t],
+    title: "{event_name}", subtitle: "{event_hashtag}", event_logo: true, app_logo: false, overlay: "",
+  }));
+  const $ = (id) => document.getElementById(id);
+  const video = $("video"), preview = $("preview"), pctx = preview.getContext("2d");
+
+  const APP_VERSION = "3";
+  let staffKey = localStorage.getItem("staffKey");
+  let boothId = localStorage.getItem("boothId");
+  if (!boothId) { boothId = uuidFallback().slice(0, 8); localStorage.setItem("boothId", boothId); }
+  let boothName = localStorage.getItem("boothName") || "Booth";
+  let settings = normalize(JSON.parse(localStorage.getItem("settings") || "null") || {});
+  let frame = null; // current frame id (falls back to the first usable frame)
+  let mode = "live";           // live | countdown | review
+  let still = null;            // full-res captured canvas
+  let wakeLock = null, qrTimer = null, reviewTimer = null;
+
+  // ---------- Screens ----------
+  function show(id) {
+    document.querySelectorAll(".screen").forEach((s) => s.classList.toggle("on", s.id === id));
+  }
+
+  // ---------- Settings ----------
+  async function loadSettings() {
+    try {
+      const r = await fetch(C.API + "/config", { cache: "no-store" });
+      if (r.ok) {
+        const raw = await r.json();
+        localStorage.setItem("settings", JSON.stringify(raw));
+        settings = normalize(raw);
+      }
+    } catch (_) { /* offline: keep cached settings */ }
+    applyBranding();
+  }
+
+  // Fill in anything missing (older cached settings, offline first run)
+  function normalize(s) {
+    return {
+      event_name: "Event", event_hashtag: s.frame_message || "", app_name: "", app_hashtag: "",
+      app_logo: "", event_logo: "", countdown: C.COUNTDOWN,
+      start_headline: "Ready when you are", start_sub: "Tap to start the booth", qr_headline: "Scan to get your photo",
+      ...s,
+      colors: { accent: "#FF5A36", background: "#0E0E12", text: "#F5EFE6", ...(s.colors || {}) },
+      frames: Array.isArray(s.frames) && s.frames.length ? s.frames : DEFAULT_FRAMES,
+    };
+  }
+  const frames = () => settings.frames.filter(F.usable);
+  const currentFrame = () => frames().find((f) => f.id === frame) || frames()[0] || DEFAULT_FRAMES[0];
+
+  function brandInto(el) {
+    el.innerHTML = "";
+    const logo = F.asset(settings.event_logo);
+    if (logo) { const i = new Image(); i.src = logo.src; i.alt = settings.event_name; el.append(i); }
+    else { const t = document.createElement("div"); t.className = "brand"; t.textContent = settings.event_name; el.append(t); }
+  }
+  function rgba(hex, a) { const n = parseInt(hex.slice(1), 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`; }
+
+  // Apply colours, logos and wording from the dashboard
+  let brandingVersion = 0;
+  async function applyBranding() {
+    const v = ++brandingVersion;
+    const c = settings.colors, root = document.documentElement.style;
+    root.setProperty("--ink", c.background); root.setProperty("--text", c.text); root.setProperty("--accent", c.accent);
+    root.setProperty("--muted", rgba(c.text, 0.62)); root.setProperty("--panel", rgba(c.text, 0.07)); root.setProperty("--line", rgba(c.text, 0.16));
+    document.querySelector('meta[name="theme-color"]').content = c.background;
+    $("startHead").textContent = settings.start_headline;
+    $("startSub").textContent = settings.start_sub;
+    $("qrHead").textContent = settings.qr_headline;
+    render();
+    await F.preload(settings); // logos + overlays (cached for offline by the service worker)
+    if (v !== brandingVersion) return;
+    render();
+    function render() {
+      brandInto($("startBrand")); brandInto($("boothBrand"));
+      const app = F.asset(settings.app_logo);
+      $("appLogo").classList.toggle("on", !!app);
+      if (app) $("appLogo").src = app.src;
+      if (!frames().some((f) => f.id === frame)) frame = (frames()[0] || {}).id;
+      buildPicker();
+    }
+  }
+
+
+  function buildPicker() {
+    const box = $("frames");
+    box.innerHTML = "";
+    const list = frames();
+    $("pickerRow").style.display = list.length > 1 ? "" : "none";
+    list.forEach((f) => {
+      const b = document.createElement("button");
+      b.dataset.frame = f.id;
+      const c = document.createElement("canvas");
+      c.width = 160; c.height = 200;
+      b.append(c, f.name);
+      b.onclick = () => { if (mode === "live") { frame = f.id; markPicker(); } };
+      box.append(b);
+    });
+    markPicker();
+    drawThumbs();
+  }
+  function markPicker() {
+    document.querySelectorAll("#frames button").forEach((b) => b.classList.toggle("sel", b.dataset.frame === frame));
+  }
+  function drawThumbs() {
+    const src = video.videoWidth ? video : (drawThumbs.sample ||= F.samplePhoto());
+    document.querySelectorAll("#frames button").forEach((b) => {
+      const c = b.querySelector("canvas"), f = frames().find((x) => x.id === b.dataset.frame);
+      if (!f) return;
+      const ctx = c.getContext("2d"); ctx.clearRect(0, 0, c.width, c.height);
+      F.draw(ctx, src, c.width, c.height, f, settings, true);
+    });
+  }
+
+  // ---------- Camera ----------
+  async function startCamera() {
+    $("camErr").textContent = "";
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: "user", width: { ideal: 1920 }, height: { ideal: 1440 } },
+      });
+      video.srcObject = stream;
+      await video.play();
+      return true;
+    } catch (e) {
+      $("camErr").textContent = "Camera unavailable: " + (e.message || e.name) + ". Check Settings › Safari › Camera is set to Allow.";
+      return false;
+    }
+  }
+
+  async function keepAwake() {
+    try { wakeLock = await navigator.wakeLock?.request("screen"); } catch (_) {}
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && $("booth").classList.contains("on")) keepAwake();
+  });
+
+  let lastThumb = 0;
+  function loop(t) {
+    if (mode !== "review" && video.videoWidth) {
+      pctx.clearRect(0, 0, preview.width, preview.height);
+      F.draw(pctx, video, preview.width, preview.height, currentFrame(), settings, true);
+      if (t - lastThumb > 1000) { drawThumbs(); lastThumb = t; }
+    }
+    requestAnimationFrame(loop);
+  }
+
+  // ---------- Capture flow ----------
+  function setControls(m) {
+    mode = m;
+    $("liveControls").style.display = m === "live" ? "" : "none";
+    $("reviewControls").style.display = m === "review" ? "" : "none";
+    $("liveControls").style.visibility = m === "countdown" ? "hidden" : "";
+    if (m === "countdown") $("liveControls").style.display = "";
+    $("pickerRow").style.visibility = m === "live" ? "" : "hidden";
+  }
+
+  function countdown() {
+    setControls("countdown");
+    const box = $("countdown"), num = $("countNum");
+    let n = settings.countdown || C.COUNTDOWN;
+    box.style.display = "flex";
+    const tick = () => {
+      if (n === 0) { box.style.display = "none"; capture(); return; }
+      num.textContent = n;
+      num.style.animation = "none"; void num.offsetWidth; num.style.animation = "";
+      n--;
+      setTimeout(tick, 1000);
+    };
+    tick();
+  }
+
+  function capture() {
+    const f = $("flash");
+    f.classList.add("go");
+    requestAnimationFrame(() => requestAnimationFrame(() => f.classList.remove("go")));
+    still = document.createElement("canvas");
+    still.width = C.OUT_W; still.height = C.OUT_H;
+    const sctx = still.getContext("2d");
+    sctx.fillStyle = "#000"; sctx.fillRect(0, 0, C.OUT_W, C.OUT_H); // JPEG has no transparency
+    F.draw(sctx, video, C.OUT_W, C.OUT_H, currentFrame(), settings, true);
+    pctx.drawImage(still, 0, 0, preview.width, preview.height);
+    setControls("review");
+    clearTimeout(reviewTimer);
+    reviewTimer = setTimeout(() => { if (mode === "review") backToLive(); }, 45000);
+  }
+
+  function backToLive() {
+    clearTimeout(reviewTimer);
+    still = null;
+    setControls("live");
+    show("booth");
+  }
+
+  async function accept() {
+    clearTimeout(reviewTimer);
+    const id = crypto.randomUUID ? crypto.randomUUID() : uuidFallback();
+    const blob = await new Promise((r) => still.toBlob(r, "image/jpeg", 0.9));
+    const tc = document.createElement("canvas");
+    tc.width = 240; tc.height = 300;
+    tc.getContext("2d").drawImage(still, 0, 0, 240, 300);
+    const thumb = await new Promise((r) => tc.toBlob(r, "image/jpeg", 0.7));
+    await Queue.add({ id, frame: currentFrame().id, blob, thumb, created: Date.now() });
+    pumpQueue();
+    showQR(id);
+  }
+
+  function uuidFallback() {
+    const b = crypto.getRandomValues(new Uint8Array(16));
+    b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80;
+    const h = [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+    return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
+  }
+
+  // ---------- QR ----------
+  function showQR(id) {
+    const url = `${location.origin}/p/${id}`;
+    const qr = qrcode(0, "M");
+    qr.addData(url);
+    qr.make();
+    $("qrCode").innerHTML = qr.createSvgTag({ margin: 0, scalable: true });
+    $("qrThumb").getContext("2d").drawImage(still, 0, 0, 432, 540);
+    const ssid = (settings.wifi_name || "").trim();
+    $("wifiBox").classList.toggle("on", !!ssid);
+    if (ssid) {
+      const pw = (settings.wifi_password || "").trim();
+      const e = (s) => s.replace(/([\\;,:"])/g, "\\$1");
+      const w = qrcode(0, "M");
+      w.addData(`WIFI:T:${pw ? "WPA" : "nopass"};S:${e(ssid)};${pw ? `P:${e(pw)};` : ""};`);
+      w.make();
+      $("wifiQr").innerHTML = w.createSvgTag({ margin: 0, scalable: true });
+      $("wifiText").textContent = pw ? `${ssid} · password: ${pw}` : ssid;
+    }
+    show("qr");
+    let left = 60;
+    const tick = () => {
+      $("qrTimer").textContent = `Returning to the booth in ${left}s`;
+      if (left-- <= 0) return finishQR();
+      qrTimer = setTimeout(tick, 1000);
+    };
+    clearTimeout(qrTimer);
+    tick();
+  }
+  function finishQR() { clearTimeout(qrTimer); backToLive(); }
+
+  // ---------- Offline-safe upload queue (IndexedDB) ----------
+  const Queue = (() => {
+    let dbp;
+    const db = () => dbp ||= new Promise((res, rej) => {
+      const r = indexedDB.open("booth", 1);
+      r.onupgradeneeded = () => r.result.createObjectStore("queue", { keyPath: "id" });
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+    const tx = async (mode, fn) => {
+      const d = await db();
+      return new Promise((res, rej) => {
+        const t = d.transaction("queue", mode);
+        const out = fn(t.objectStore("queue"));
+        t.oncomplete = () => res(out && out.result);
+        t.onerror = () => rej(t.error);
+      });
+    };
+    return {
+      add: (item) => tx("readwrite", (s) => s.put(item)),
+      remove: (id) => tx("readwrite", (s) => s.delete(id)),
+      all: () => tx("readonly", (s) => s.getAll()),
+    };
+  })();
+
+  let pumping = false;
+  async function pumpQueue() {
+    if (pumping || !staffKey) return;
+    pumping = true;
+    try {
+      const items = (await Queue.all()).sort((a, b) => a.created - b.created);
+      for (const it of items) {
+        const fd = new FormData();
+        fd.append("id", it.id);
+        fd.append("frame", it.frame);
+        fd.append("booth_id", boothId);
+        fd.append("file", new File([it.blob], it.id + ".jpg", { type: "image/jpeg" }));
+        if (it.thumb) fd.append("thumb", new File([it.thumb], it.id + "_t.jpg", { type: "image/jpeg" }));
+        try {
+          const r = await fetch(C.API + "/upload", { method: "POST", headers: { "x-staff-key": staffKey }, body: fd });
+          if (r.ok) await Queue.remove(it.id);
+          else if (r.status === 401) { staffKey = null; localStorage.removeItem("staffKey"); break; }
+          else break;
+        } catch (_) { break; } // offline — try again later
+      }
+    } finally {
+      pumping = false;
+      updateStatus();
+    }
+  }
+  async function updateStatus() {
+    const n = (await Queue.all()).length;
+    const s = $("status");
+    s.textContent = !staffKey ? "Booth disconnected — open staff menu"
+      : n ? `${n} photo${n > 1 ? "s" : ""} waiting to upload` : "";
+    s.classList.toggle("on", n > 0 || !staffKey);
+    return n;
+  }
+  setInterval(pumpQueue, 5000);
+  window.addEventListener("online", pumpQueue);
+
+  // Heartbeat: lets the dashboard show this booth is alive and how many photos are queued
+  async function heartbeat() {
+    if (!staffKey) return;
+    try {
+      const n = (await Queue.all()).length;
+      const r = await fetch(C.API + "/heartbeat", {
+        method: "POST",
+        headers: { "x-staff-key": staffKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ booth_id: boothId, name: boothName, queue_length: n, app_version: APP_VERSION }),
+      });
+      if (r.ok) {
+        const d = await r.json();
+        if (d.settings) {
+          const changed = JSON.stringify(d.settings) !== localStorage.getItem("settings");
+          if (changed) {
+            settings = normalize(d.settings);
+            localStorage.setItem("settings", JSON.stringify(d.settings));
+            if (mode === "live") applyBranding();
+          }
+        }
+      }
+    } catch (_) {}
+  }
+  setInterval(heartbeat, 60000);
+
+  // ---------- Staff menu (5 taps top-left) ----------
+  let taps = [];
+  $("staffHot").addEventListener("click", async () => {
+    const now = Date.now();
+    taps = taps.filter((t) => now - t < 2000).concat(now);
+    if (taps.length >= 5) {
+      taps = [];
+      const n = await updateStatus();
+      $("staffInfo").textContent = `${boothName} · ${settings.event_name} · ${n} photo${n === 1 ? "" : "s"} in upload queue · ${navigator.onLine ? "online" : "offline"}`;
+      show("staff");
+    }
+  });
+  $("sRetry").onclick = () => pumpQueue();
+  $("sReload").onclick = async () => { await loadSettings(); show("booth"); };
+  $("sSignout").onclick = () => { localStorage.removeItem("staffKey"); location.reload(); };
+  $("sClose").onclick = () => show("booth");
+
+  // ---------- Setup ----------
+  async function checkKey(key) {
+    try {
+      const r = await fetch(C.API + "/auth", { method: "POST", headers: { "x-staff-key": key } });
+      return r.status === 429 ? "locked" : r.ok;
+    } catch (_) { return null; }
+  }
+  $("setupGo").onclick = async () => {
+    const key = $("pass").value.trim();
+    if (!key) return;
+    $("setupErr").textContent = "Checking…";
+    const ok = await checkKey(key);
+    if (ok === "locked") { $("setupErr").textContent = "Too many attempts — wait 15 minutes"; return; }
+    if (ok) {
+      staffKey = key;
+      boothName = $("boothName").value.trim() || boothName;
+      localStorage.setItem("staffKey", key);
+      localStorage.setItem("boothName", boothName);
+      heartbeat();
+      $("setupErr").textContent = "";
+      await loadSettings();
+      show("start");
+    } else {
+      $("setupErr").textContent = ok === null ? "No connection — check Wi-Fi" : "Incorrect passcode";
+    }
+  };
+  $("pass").addEventListener("keydown", (e) => { if (e.key === "Enter") $("setupGo").click(); });
+
+  $("startGo").onclick = async () => {
+    if (await startCamera()) {
+      keepAwake();
+      show("booth");
+      setControls("live");
+    }
+  };
+  $("shoot").onclick = countdown;
+  $("retake").onclick = () => { setControls("live"); countdown(); };
+  $("cancel").onclick = backToLive;
+  $("accept").onclick = accept;
+  $("done").onclick = finishQR;
+
+  // ---------- Boot ----------
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+  applyBranding();
+  requestAnimationFrame(loop);
+  if (staffKey) { loadSettings(); show("start"); pumpQueue(); heartbeat(); }
+  else show("setup");
+})();
+</script>
+</body>
+</html>
